@@ -40,6 +40,11 @@ class Grid:
         return self.coord_system.as_cartopy_crs()
 
     @property
+    def projection(self) -> ccrs.Projection:
+        """The cartopy projection of this grid, e.g. for plotting map axes."""
+        return self.coord_system.as_cartopy_projection()
+
+    @property
     def shape(self) -> tuple[int, int]:
         """The (ny, nx) shape of the grid."""
         return (len(self.y_coord.points), len(self.x_coord.points))
