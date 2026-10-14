@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from iris.coord_systems import LambertAzimuthalEqualArea
+from iris.coord_systems import LambertAzimuthalEqualArea, RotatedGeogCS
 
 from autogrid import EASE2Grid, Grid, LatLonGrid
 from autogrid.coord_systems import WGS84, EASE2GlobalCS
@@ -64,3 +64,49 @@ def test_ease2_subset_aligns_with_full_grid() -> None:
 def test_ease2_rejects_misaligned_subset(shape: tuple[int, int]) -> None:
     with pytest.raises(ValueError, match="centred subset"):
         EASE2Grid("south", "25km", shape=shape)
+
+
+@pytest.mark.parametrize(
+    "grid",
+    [
+        LatLonGrid(1.0),
+        EASE2Grid("north", "25km", shape=(432, 432)),
+        EASE2Grid("global", "36km"),
+        Grid(
+            np.linspace(-5, 5, 20),
+            np.linspace(-5, 5, 30),
+            RotatedGeogCS(37.5, 177.5, ellipsoid=WGS84),
+        ),
+    ],
+    ids=["latlon", "ease2-north", "ease2-global", "rotated"],
+)
+def test_from_latlon_recovers_grid(grid: Grid) -> None:
+    recovered = Grid.from_latlon(grid.latitudes, grid.longitudes, grid.coord_system)
+    assert type(recovered) is Grid
+    assert recovered.shape == grid.shape
+    np.testing.assert_allclose(recovered.x_coord.points, grid.x_coord.points, atol=1e-6)
+    np.testing.assert_allclose(recovered.y_coord.points, grid.y_coord.points, atol=1e-6)
+    assert recovered.x_coord.circular == grid.x_coord.circular
+
+
+def test_from_latlon_handles_dateline() -> None:
+    lon, lat = np.meshgrid(np.arange(170.5, 190, 1.0), np.arange(-9.5, 10, 1.0))
+    lon = (lon + 180) % 360 - 180  # 170.5 ... 179.5, -179.5 ... -170.5
+    grid = Grid.from_latlon(lat, lon, WGS84)
+    np.testing.assert_allclose(grid.x_coord.points, np.arange(170.5, 190, 1.0))
+
+
+def test_from_latlon_rejects_wrong_coord_system() -> None:
+    grid = EASE2Grid("north", "25km", shape=(432, 432))
+    with pytest.raises(ValueError, match="not on a rectilinear grid"):
+        Grid.from_latlon(grid.latitudes, grid.longitudes, WGS84)
+
+
+@pytest.mark.parametrize(
+    ("lats", "lons"),
+    [(np.zeros(10), np.zeros(10)), (np.zeros((3, 4)), np.zeros((4, 3)))],
+    ids=["1d", "mismatched"],
+)
+def test_from_latlon_rejects_bad_shapes(lats: np.ndarray, lons: np.ndarray) -> None:
+    with pytest.raises(ValueError, match="2D arrays of the same shape"):
+        Grid.from_latlon(lats, lons, WGS84)
