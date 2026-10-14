@@ -48,8 +48,33 @@ class Regridder:
         self._regridders: dict[Method, Callable[[Cube], Cube]] = {}
 
     @cached_property
-    def _outside(self) -> NDArray[np.bool_]:
-        """Flag target points that lie outside the cells of the source grid."""
+    def nearest_indices(self) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
+        """Source grid indices of the nearest source point to each target point.
+
+        Use these to apply nearest neighbour regridding externally, e.g. to
+        torch tensors on a GPU, with data[..., iy, ix]. This gives the same
+        values as apply(data, "nearest"), except that target points outside the
+        source grid take the value of the nearest source point at its edge
+        rather than NaN. Use outside_source to mask these if needed.
+
+        Returns:
+            Tuple of (iy, ix) integer arrays with the target grid shape (ny, nx),
+            giving the row and column of the nearest source point.
+        """
+        # Regrid the flat index of each source point, which nearest neighbour
+        # regridding copies exactly into each target point
+        flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
+        flat = flat.reshape(self.source.shape)
+        result = self._regridder("nearest")(_cube(self.source, flat)).data
+        return np.unravel_index(np.asarray(result).astype(np.intp), self.source.shape)
+
+    @cached_property
+    def outside_source(self) -> NDArray[np.bool_]:
+        """Flag target points that lie outside the cells of the source grid.
+
+        Returns:
+            A boolean array with the target grid shape (ny, nx).
+        """
         source, target = self.source, self.target
         xy = source.crs.transform_points(target.crs, target.x, target.y)
         x, y = xy[..., 0], xy[..., 1]
@@ -68,7 +93,7 @@ class Regridder:
             match method:
                 # Extrapolation only fills the half cell between the outermost
                 # source points and the source grid edge: anything further out
-                # is masked by _outside
+                # is masked by outside_source
                 case "linear":
                     scheme = Linear(extrapolation_mode="extrapolate")
                 case "nearest":
@@ -105,7 +130,7 @@ class Regridder:
             raise ValueError(msg)
         result = self._regridder(method)(_cube(self.source, data)).data
         result = np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
-        result[..., self._outside] = np.nan
+        result[..., self.outside_source] = np.nan
         return result
 
     def __repr__(self) -> str:

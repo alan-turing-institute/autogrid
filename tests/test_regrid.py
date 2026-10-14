@@ -97,3 +97,43 @@ def test_methods_differ_on_same_regridder(latlon: LatLonGrid, south: EASE2Grid) 
     assert not np.array_equal(
         regridder.apply(data, "linear"), regridder.apply(data, "nearest")
     )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        LatLonGrid(1.0),
+        Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), WGS84),
+    ],
+    ids=["global", "regional"],
+)
+def test_nearest_indices_match_apply(source: Grid, south: EASE2Grid) -> None:
+    regridder = Regridder(source, south)
+    iy, ix = regridder.nearest_indices
+    assert iy.shape == ix.shape == south.shape
+    assert iy.dtype == ix.dtype == np.intp
+    assert iy.min() >= 0 and iy.max() < source.shape[0]
+    assert ix.min() >= 0 and ix.max() < source.shape[1]
+    data = np.random.default_rng(0).random((3, *source.shape))
+    gathered = data[..., iy, ix]
+    expected = regridder.apply(data, "nearest")
+    inside = ~regridder.outside_source
+    np.testing.assert_array_equal(gathered[..., inside], expected[..., inside])
+    assert np.isnan(expected[..., ~inside]).all()
+
+
+def test_nearest_indices_are_cached(latlon: LatLonGrid, south: EASE2Grid) -> None:
+    regridder = Regridder(latlon, south)
+    assert regridder.nearest_indices is regridder.nearest_indices
+    assert set(regridder._regridders) == {"nearest"}
+
+
+def test_nearest_indices_gather_torch_tensors(
+    latlon: LatLonGrid, south: EASE2Grid
+) -> None:
+    torch = pytest.importorskip("torch")
+    regridder = Regridder(latlon, south)
+    iy, ix = (torch.from_numpy(i) for i in regridder.nearest_indices)
+    data = np.random.default_rng(0).random((2, 4, *latlon.shape)).astype(np.float32)
+    gathered = torch.from_numpy(data)[:, :, iy, ix]
+    np.testing.assert_array_equal(gathered.numpy(), regridder.apply(data, "nearest"))
