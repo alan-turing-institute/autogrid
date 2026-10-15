@@ -28,6 +28,23 @@ def test_latlon_grid_equals_plain_grid() -> None:
     assert LatLonGrid(1.0) == Grid(lon, lat, "EPSG:4326")
 
 
+def test_equal_grids_hash_equal() -> None:
+    lon = np.arange(-179.5, 180, 1.0)
+    lat = np.arange(-89.5, 90, 1.0)
+    cache = {LatLonGrid(1.0): "cached"}
+    assert cache[Grid(lon, lat, "EPSG:4326")] == "cached"
+    assert hash(Grid([0.0], [0.0], 4326)) == hash(Grid([-0.0], [0.0], 4326))
+
+
+def test_grid_points_are_read_only() -> None:
+    lon = np.arange(-179.5, 180, 1.0)
+    grid = Grid(lon, np.arange(-89.5, 90, 1.0), "EPSG:4326")
+    lon[0] = 0.0
+    assert grid.x_points[0] == -179.5
+    with pytest.raises(ValueError, match="read-only"):
+        grid.x_points[0] = 0.0
+
+
 @pytest.mark.parametrize(
     ("region", "epsg"), [("north", 6931), ("south", 6932), ("global", 6933)]
 )

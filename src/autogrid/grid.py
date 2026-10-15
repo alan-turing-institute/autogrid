@@ -30,8 +30,11 @@ class Grid:
                 accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS.
         """
         self.crs: CRS = CRS.from_user_input(crs)
-        self.x_points = np.asarray(x_points, dtype=np.float64)
-        self.y_points = np.asarray(y_points, dtype=np.float64)
+        # Read-only copies, so a Grid can't change after it has been hashed
+        self.x_points = np.array(x_points, dtype=np.float64)
+        self.y_points = np.array(y_points, dtype=np.float64)
+        self.x_points.flags.writeable = False
+        self.y_points.flags.writeable = False
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Grid):
@@ -40,6 +43,16 @@ class Grid:
             self.crs == other.crs
             and np.array_equal(self.x_points, other.x_points)
             and np.array_equal(self.y_points, other.y_points)
+        )
+
+    def __hash__(self) -> int:
+        # Adding 0.0 maps -0.0 to 0.0, which compare equal but differ in bytes
+        return hash(
+            (
+                self.crs,
+                (self.x_points + 0.0).tobytes(),
+                (self.y_points + 0.0).tobytes(),
+            )
         )
 
     def __repr__(self) -> str:
