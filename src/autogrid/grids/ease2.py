@@ -38,56 +38,43 @@ SPEC: dict[Region, dict[str, tuple[float, tuple[int, int]]]] = {
 EPSG: dict[Region, int] = {"north": 6931, "south": 6932, "global": 6933}
 
 
-class EASE2Grid(Grid):
-    """An EASE-Grid 2.0 grid (EPSG:6931 north, 6932 south, 6933 global).
+def build_ease2(
+    region: Region,
+    resolution: str,
+    shape: tuple[int, int] | None = None,
+) -> Grid:
+    """Build an EASE-Grid 2.0 grid (EPSG:6931 north, 6932 south, 6933 global).
 
     Rows run from top (+y) to bottom (-y), matching the NSIDC data files.
+
+    Args:
+        region: "north", "south" or "global".
+        resolution: Nominal resolution, e.g. "25p0km".
+        shape: Optional (ny, nx) of a subset centred on the projection
+            origin. Each dimension must have the same parity as the full
+            grid so that cells align with the official grid. Defaults to
+            the full grid.
+
+    Raises:
+        ValueError: If the region or resolution is unknown, or the shape is
+            not a non-empty centred subset of the full grid.
     """
-
-    def __init__(
-        self,
-        region: Region,
-        resolution: str,
-        shape: tuple[int, int] | None = None,
-    ) -> None:
-        """Initialise an EASE2Grid.
-
-        Args:
-            region: "north", "south" or "global".
-            resolution: Nominal resolution, e.g. "25p0km".
-            shape: Optional (ny, nx) of a subset centred on the projection
-                origin. Each dimension must have the same parity as the full
-                grid so that cells align with the official grid. Defaults to
-                the full grid.
-
-        Raises:
-            ValueError: If the region or resolution is unknown, or the shape is
-                not a non-empty centred subset of the full grid.
-        """
-        if region not in SPEC:
-            msg = f"Unknown region {region!r}; expected one of {list(SPEC)}."
-            raise ValueError(msg)
-        if resolution not in SPEC[region]:
-            msg = (
-                f"Unknown resolution {resolution!r} for region {region!r}; "
-                f"expected one of {list(SPEC[region])}."
-            )
-            raise ValueError(msg)
-        cell, full_shape = SPEC[region][resolution]
-        shape = shape or full_shape
-        for n, n_full in zip(shape, full_shape, strict=True):
-            if not 0 < n <= n_full or (n_full - n) % 2:
-                msg = f"Shape {shape} is not a centred subset of {full_shape}."
-                raise ValueError(msg)
-        self.region = region
-        self.resolution = resolution
-        ny, nx = shape
-        x_points = (np.arange(nx) - (nx - 1) / 2) * cell
-        y_points = ((ny - 1) / 2 - np.arange(ny)) * cell
-        super().__init__(x_points, y_points, EPSG[region])
-
-    def __repr__(self) -> str:
-        return (
-            f"{type(self).__name__}(region={self.region!r}, "
-            f"resolution={self.resolution!r}, shape={self.shape})"
+    if region not in SPEC:
+        msg = f"Unknown region {region!r}; expected one of {list(SPEC)}."
+        raise ValueError(msg)
+    if resolution not in SPEC[region]:
+        msg = (
+            f"Unknown resolution {resolution!r} for region {region!r}; "
+            f"expected one of {list(SPEC[region])}."
         )
+        raise ValueError(msg)
+    cell, full_shape = SPEC[region][resolution]
+    shape = shape or full_shape
+    for n, n_full in zip(shape, full_shape, strict=True):
+        if not 0 < n <= n_full or (n_full - n) % 2:
+            msg = f"Shape {shape} is not a centred subset of {full_shape}."
+            raise ValueError(msg)
+    ny, nx = shape
+    x_points = (np.arange(nx) - (nx - 1) / 2) * cell
+    y_points = ((ny - 1) / 2 - np.arange(ny)) * cell
+    return Grid(x_points, y_points, EPSG[region], name=f"EASE2 {region} {resolution}")

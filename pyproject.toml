@@ -21,6 +21,3 @@ dev = [
     "ruff>=0.17.0",
     "ty>=0.0.88",
 ]
-
-[tool.mypy]
-disable_error_code = ["import-untyped"]

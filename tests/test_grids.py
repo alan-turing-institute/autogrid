@@ -5,12 +5,12 @@ from pyproj import CRS
 
 from autogrid import Grid
 from autogrid.grid import CRSLike
-from autogrid.grids import EASE2Grid, LatLonGrid
+from autogrid.grids import build_ease2, build_global_latlon
 from autogrid.grids.ease2 import Region
 
 
 def test_latlon_grid() -> None:
-    grid = LatLonGrid(1.0)
+    grid = build_global_latlon(1.0)
     assert grid.shape == (180, 360)
     assert grid.x_points[0] == -179.5
     assert grid.y_points[-1] == 89.5
@@ -19,27 +19,44 @@ def test_latlon_grid() -> None:
 
 def test_latlon_grid_rejects_uneven_resolution() -> None:
     with pytest.raises(ValueError, match="does not divide"):
-        LatLonGrid(0.7)
+        build_global_latlon(0.7)
 
 
 @pytest.mark.parametrize("resolution", [0, -1.0, -180, 360, np.inf, np.nan])
 def test_latlon_grid_rejects_out_of_range_resolution(resolution: float) -> None:
     with pytest.raises(ValueError, match="must be in"):
-        LatLonGrid(resolution)
+        build_global_latlon(resolution)
 
 
 def test_latlon_grid_equals_plain_grid() -> None:
     lon = np.arange(-179.5, 180, 1.0)
     lat = np.arange(-89.5, 90, 1.0)
-    assert LatLonGrid(1.0) == Grid(lon, lat, "EPSG:4326")
+    assert build_global_latlon(1.0) == Grid(lon, lat, "EPSG:4326")
 
 
 def test_equal_grids_hash_equal() -> None:
     lon = np.arange(-179.5, 180, 1.0)
     lat = np.arange(-89.5, 90, 1.0)
-    cache = {LatLonGrid(1.0): "cached"}
+    cache = {build_global_latlon(1.0): "cached"}
     assert cache[Grid(lon, lat, "EPSG:4326")] == "cached"
     assert hash(Grid([0.0], [0.0], 4326)) == hash(Grid([-0.0], [0.0], 4326))
+
+
+def test_name_is_ignored_by_equality() -> None:
+    a = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="a")
+    b = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="b")
+    assert a == b
+    assert hash(a) == hash(b)
+
+
+def test_repr_shows_name_when_set() -> None:
+    assert repr(Grid([0.0, 1.0], [0.0, 1.0], 4326)) == (
+        "Grid(shape=(2, 2), crs='EPSG:4326')"
+    )
+    assert repr(build_ease2("south", "25p0km", shape=(432, 432))) == (
+        "Grid(name='EASE2 south 25p0km', shape=(432, 432), crs='EPSG:6932')"
+    )
+    assert build_global_latlon(0.25).name == "Global lat-lon 0.25 degree"
 
 
 def test_grid_points_are_read_only() -> None:
@@ -55,12 +72,12 @@ def test_grid_points_are_read_only() -> None:
     ("region", "epsg"), [("north", 6931), ("south", 6932), ("global", 6933)]
 )
 def test_ease2_crs(region: Region, epsg: int) -> None:
-    grid = EASE2Grid(region, "36p0km")
+    grid = build_ease2(region, "36p0km")
     assert grid.crs.to_epsg() == epsg
 
 
 def test_ease2_south_25p0km() -> None:
-    grid = EASE2Grid("south", "25p0km")
+    grid = build_ease2("south", "25p0km")
     assert grid.shape == (720, 720)
     assert grid.crs.to_epsg() == 6932
     # Rows run top to bottom, cell centres half a cell in from the edge
@@ -70,7 +87,7 @@ def test_ease2_south_25p0km() -> None:
 
 
 def test_ease2_global_extent() -> None:
-    grid = EASE2Grid("global", "36p0km")
+    grid = build_ease2("global", "36p0km")
     # The global grid spans the whole width of the projection
     x_min, x_max = grid.projection.x_limits
     assert np.isclose(grid.x_bounds[0, 0], x_min)
@@ -78,8 +95,8 @@ def test_ease2_global_extent() -> None:
 
 
 def test_ease2_subset_aligns_with_full_grid() -> None:
-    full = EASE2Grid("south", "25p0km")
-    subset = EASE2Grid("south", "25p0km", shape=(432, 432))
+    full = build_ease2("south", "25p0km")
+    subset = build_ease2("south", "25p0km", shape=(432, 432))
     offset = (720 - 432) // 2
     np.testing.assert_array_equal(subset.x_points, full.x_points[offset : offset + 432])
 
@@ -87,7 +104,7 @@ def test_ease2_subset_aligns_with_full_grid() -> None:
 @pytest.mark.parametrize("shape", [(431, 431), (800, 800), (0, 0), (-2, 432)])
 def test_ease2_rejects_misaligned_subset(shape: tuple[int, int]) -> None:
     with pytest.raises(ValueError, match="centred subset"):
-        EASE2Grid("south", "25p0km", shape=shape)
+        build_ease2("south", "25p0km", shape=shape)
 
 
 @pytest.mark.parametrize(
@@ -100,15 +117,15 @@ def test_ease2_rejects_misaligned_subset(shape: tuple[int, int]) -> None:
 )
 def test_ease2_rejects_unknown_spec(region: str, resolution: str, match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        EASE2Grid(region, resolution)  # type: ignore[arg-type]
+        build_ease2(region, resolution)  # ty: ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize(
     "grid",
     [
-        LatLonGrid(1.0),
-        EASE2Grid("north", "25p0km", shape=(432, 432)),
-        EASE2Grid("global", "36p0km"),
+        build_global_latlon(1.0),
+        build_ease2("north", "25p0km", shape=(432, 432)),
+        build_ease2("global", "36p0km"),
         Grid(
             np.linspace(-5, 5, 20),
             np.linspace(-5, 5, 30),
@@ -140,7 +157,7 @@ def test_from_latlon_handles_dateline() -> None:
 
 
 def test_from_latlon_rejects_wrong_crs() -> None:
-    grid = EASE2Grid("north", "25p0km", shape=(432, 432))
+    grid = build_ease2("north", "25p0km", shape=(432, 432))
     with pytest.raises(ValueError, match="not on a rectilinear grid"):
         Grid.from_latlon(grid.latitudes, grid.longitudes, "EPSG:4326")
 
@@ -164,11 +181,11 @@ def test_from_latlon_rejects_too_few_points(shape: tuple[int, int]) -> None:
 @pytest.mark.parametrize("crs", ["EPSG:6931", 6931, CRS.from_epsg(6931)])
 def test_grid_accepts_any_pyproj_crs_input(crs: CRSLike) -> None:
     grid = Grid([-12500.0, 12500.0], [12500.0, -12500.0], crs)
-    assert grid == EASE2Grid("north", "25p0km", shape=(2, 2))
+    assert grid == build_ease2("north", "25p0km", shape=(2, 2))
 
 
 def test_grid_has_no_iris_attributes() -> None:
-    grid = EASE2Grid("south", "25p0km", shape=(432, 432))
+    grid = build_ease2("south", "25p0km", shape=(432, 432))
     for name, value in vars(grid).items():
         assert not type(value).__module__.startswith("iris"), name
 
@@ -180,12 +197,12 @@ def test_grid_bounds_are_halfway_between_points() -> None:
 
 
 def test_grids_with_different_crs_are_not_equal() -> None:
-    assert EASE2Grid("north", "36p0km") != EASE2Grid("south", "36p0km")
+    assert build_ease2("north", "36p0km") != build_ease2("south", "36p0km")
 
 
 @pytest.mark.parametrize("region", ["north", "south", "global"])
 def test_ease2_projection_has_plot_limits(region: Region) -> None:
-    x_min, x_max = EASE2Grid(region, "36p0km").projection.x_limits
+    x_min, x_max = build_ease2(region, "36p0km").projection.x_limits
     assert x_max - x_min > 1e7
 
 

@@ -1,8 +1,9 @@
 import numpy as np
 import pytest
 
-from autogrid import Grid, Regridder, nearest_indices
-from autogrid.grids import EASE2Grid, LatLonGrid
+from autogrid import Grid, Regridder
+from autogrid.grids import build_ease2, build_global_latlon
+from autogrid.nearest import nearest_indices
 
 
 def _haversine(
@@ -16,7 +17,7 @@ def _haversine(
     return 2 * np.arcsin(np.sqrt(a))
 
 
-def test_matches_regridder_on_grids(latlon: LatLonGrid, south: EASE2Grid) -> None:
+def test_matches_regridder_on_grids(latlon: Grid, south: Grid) -> None:
     indices = nearest_indices(
         latlon.latitudes, latlon.longitudes, south.latitudes, south.longitudes
     )
@@ -26,7 +27,7 @@ def test_matches_regridder_on_grids(latlon: LatLonGrid, south: EASE2Grid) -> Non
         np.testing.assert_array_equal(got, want)
 
 
-def test_flat_source_matches_grid_source(latlon: LatLonGrid, south: EASE2Grid) -> None:
+def test_flat_source_matches_grid_source(latlon: Grid, south: Grid) -> None:
     # An anemoi dataset stores the source as flat latitude and longitude arrays
     (flat,) = nearest_indices(
         latlon.latitudes.ravel(),
@@ -42,7 +43,7 @@ def test_flat_source_matches_grid_source(latlon: LatLonGrid, south: EASE2Grid) -
     np.testing.assert_array_equal(flat, np.ravel_multi_index((iy, ix), latlon.shape))
 
 
-def test_flat_target_keeps_its_shape(latlon: LatLonGrid, south: EASE2Grid) -> None:
+def test_flat_target_keeps_its_shape(latlon: Grid, south: Grid) -> None:
     iy, ix = nearest_indices(
         latlon.latitudes,
         latlon.longitudes,
@@ -67,11 +68,11 @@ def test_curvilinear_points_are_not_a_grid() -> None:
 @pytest.mark.parametrize("source", ["latlon", "curvilinear"])
 def test_matches_brute_force(source: str) -> None:
     if source == "latlon":
-        grid = LatLonGrid(5.0)
+        grid = build_global_latlon(5.0)
         src_lat, src_lon = grid.latitudes, grid.longitudes
     else:
         src_lat, src_lon = _curvilinear_points()
-    target = EASE2Grid("south", "36p0km", shape=(60, 60))
+    target = build_ease2("south", "36p0km", shape=(60, 60))
     tgt_lat, tgt_lon = target.latitudes.ravel(), target.longitudes.ravel()
     indices = nearest_indices(src_lat, src_lon, tgt_lat, tgt_lon)
     # Distance from every target point to every source point, as in cryocast

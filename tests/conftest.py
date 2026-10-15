@@ -1,13 +1,14 @@
 import pytest
 
-from autogrid.grids import EASE2Grid, LatLonGrid
+from autogrid import Grid
+from autogrid.grids import build_ease2, build_global_latlon
 
 
 @pytest.fixture(scope="module")
-def latlon() -> LatLonGrid:
-    return LatLonGrid(1.0)
+def latlon() -> Grid:
+    return build_global_latlon(1.0)
 
 
 @pytest.fixture(scope="module")
-def south() -> EASE2Grid:
-    return EASE2Grid("south", "25p0km", shape=(432, 432))
+def south() -> Grid:
+    return build_ease2("south", "25p0km", shape=(432, 432))

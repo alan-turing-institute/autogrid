@@ -20,7 +20,14 @@ class Grid:
     is longitude and y is latitude, whatever the CRS's own axis order.
     """
 
-    def __init__(self, x_points: ArrayLike, y_points: ArrayLike, crs: CRSLike) -> None:
+    def __init__(
+        self,
+        x_points: ArrayLike,
+        y_points: ArrayLike,
+        crs: CRSLike,
+        *,
+        name: str | None = None,
+    ) -> None:
         """Initialise a Grid from 1D x/y points in the given CRS.
 
         Args:
@@ -28,8 +35,11 @@ class Grid:
             y_points: 1D array of y coordinates of grid points.
             crs: The CRS of the grid, as anything pyproj.CRS.from_user_input
                 accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS.
+            name: Optional label for display, e.g. "EASE2 south 25p0km". It is
+                not part of the grid's identity, so is ignored by == and hash.
         """
         self.crs: CRS = CRS.from_user_input(crs)
+        self.name = name
         # Read-only copies, so a Grid can't change after it has been hashed
         self.x_points = np.array(x_points, dtype=np.float64)
         self.y_points = np.array(y_points, dtype=np.float64)
@@ -56,8 +66,10 @@ class Grid:
         )
 
     def __repr__(self) -> str:
+        name = f"name={self.name!r}, " if self.name is not None else ""
         return (
-            f"{type(self).__name__}(shape={self.shape}, crs={self.crs.to_string()!r})"
+            f"{type(self).__name__}({name}shape={self.shape}, "
+            f"crs={self.crs.to_string()!r})"
         )
 
     @property
@@ -118,8 +130,9 @@ class Grid:
             self.crs, latlon_crs(self.crs), always_xy=True
         ).transform(self.x, self.y)
 
-    @staticmethod
+    @classmethod
     def from_latlon(
+        cls,
         latitudes: ArrayLike,
         longitudes: ArrayLike,
         crs: CRSLike,
@@ -137,9 +150,6 @@ class Grid:
             crs: The CRS in which the grid is rectilinear, as for Grid.
             tolerance: Largest allowed distance between a projected point and
                 the recovered grid lines, as a fraction of the grid spacing.
-
-        Returns:
-            A plain Grid, whatever class this is called on.
 
         Raises:
             ValueError: If the arrays are not 2D with matching shapes, have
@@ -181,7 +191,7 @@ class Grid:
                 f"compared with a grid spacing of {spacing:.3g}."
             )
             raise ValueError(msg)
-        return Grid(x_points, y_points, crs)
+        return cls(x_points, y_points, crs)
 
     @staticmethod
     def guess_bounds(points: NDArray[np.float64]) -> NDArray[np.float64]:

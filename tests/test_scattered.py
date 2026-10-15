@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 
 import autogrid.scattered
-from autogrid import points_to_points
-from autogrid.grids import EASE2Grid
+from autogrid import Grid
+from autogrid.scattered import points_to_points
+from autogrid.grids import build_ease2
 from autogrid.sphere import EARTH_RADIUS_KM
 
 
@@ -38,8 +39,8 @@ def _argo_source(
 
 
 @pytest.fixture(scope="module")
-def target() -> EASE2Grid:
-    return EASE2Grid("south", "36p0km", shape=(60, 60))
+def target() -> Grid:
+    return build_ease2("south", "36p0km", shape=(60, 60))
 
 
 @pytest.fixture(scope="module")
@@ -52,7 +53,7 @@ def observations() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 @pytest.mark.parametrize("distance_scale_km", [100.0, 2000.0])
 def test_matches_argo_source(
-    target: EASE2Grid,
+    target: Grid,
     observations: tuple[np.ndarray, np.ndarray, np.ndarray],
     distance_scale_km: float,
 ) -> None:
@@ -69,7 +70,7 @@ def test_matches_argo_source(
 
 
 def test_chunking_does_not_change_result(
-    target: EASE2Grid,
+    target: Grid,
     observations: tuple[np.ndarray, np.ndarray, np.ndarray],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -124,7 +125,7 @@ def test_ignores_masked_observations() -> None:
     assert not np.ma.isMaskedArray(result)
 
 
-def test_keeps_source_and_target_shapes(target: EASE2Grid) -> None:
+def test_keeps_source_and_target_shapes(target: Grid) -> None:
     lat, lon = np.meshgrid(np.linspace(-80, -60, 4), np.linspace(-180, 180, 5))
     values = np.ones((2, *lat.shape), dtype=np.float32)
     result = points_to_points(
@@ -160,7 +161,7 @@ def test_rejects_invalid_arguments(kwargs: dict[str, Any], match: str) -> None:
 
 
 def test_max_distance_beyond_globe_matches_dense(
-    target: EASE2Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
+    target: Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
 ) -> None:
     lat, lon, values = observations
     args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
@@ -173,7 +174,7 @@ def test_max_distance_beyond_globe_matches_dense(
 
 
 def test_max_distance_matches_brute_force(
-    target: EASE2Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
+    target: Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
 ) -> None:
     lat, lon, values = observations
     distance_scale_km, max_distance_km = 300.0, 800.0
