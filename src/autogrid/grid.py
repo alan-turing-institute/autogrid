@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
 
 from autogrid.adaptors import cartopy_projection
+from autogrid.adaptors.pyproj import latlon_crs
 
 # Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
 CRSLike = int | str | dict[str, Any] | CRS
@@ -59,12 +60,12 @@ class Grid:
 
     @property
     def latitudes(self) -> NDArray[np.float64]:
-        """True latitude of each grid point, with shape (ny, nx)."""
+        """True latitude of each grid point in degrees, with shape (ny, nx)."""
         return self._lonlat[1]
 
     @property
     def longitudes(self) -> NDArray[np.float64]:
-        """True longitude of each grid point, with shape (ny, nx)."""
+        """True longitude of each grid point in degrees east, with shape (ny, nx)."""
         return self._lonlat[0]
 
     @property
@@ -101,7 +102,7 @@ class Grid:
     def _lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Return the longitude and latitude of each grid point, with shape (ny, nx)."""
         return Transformer.from_crs(
-            self.crs, self.crs.geodetic_crs, always_xy=True
+            self.crs, latlon_crs(self.crs), always_xy=True
         ).transform(self.x, self.y)
 
     @staticmethod
@@ -140,7 +141,7 @@ class Grid:
             )
             raise ValueError(msg)
         crs = CRS.from_user_input(crs)
-        x, y = Transformer.from_crs(crs.geodetic_crs, crs, always_xy=True).transform(
+        x, y = Transformer.from_crs(latlon_crs(crs), crs, always_xy=True).transform(
             longitudes, latitudes
         )
         if crs.is_geographic:

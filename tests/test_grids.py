@@ -158,3 +158,52 @@ def test_rotated_grid_projection_is_rotated_pole() -> None:
     projection = Grid(np.linspace(-5, 5, 20), np.linspace(-5, 5, 30), crs).projection
     assert isinstance(projection, ccrs.RotatedPole)
     assert projection.proj4_params["o_lat_p"] == 37.5
+
+
+PARIS = "+proj=longlat +ellps=clrk80ign +pm=paris +no_defs"
+PARIS_DEGREES = 2.5969213 * 0.9
+
+
+def test_grid_latlon_is_relative_to_greenwich() -> None:
+    grid = Grid([0.0, 1.0], [45.0, 46.0], PARIS)
+    np.testing.assert_allclose(grid.longitudes[0], [PARIS_DEGREES, PARIS_DEGREES + 1])
+
+
+def test_grid_latlon_converts_grads_to_degrees() -> None:
+    # EPSG:4807 is in grads relative to Paris, so 0 and 50 grads are 2.34 and 45 degrees
+    grid = Grid([0.0, 1.0], [50.0, 51.0], "EPSG:4807")
+    np.testing.assert_allclose(grid.longitudes[0, 0], PARIS_DEGREES, atol=1e-2)
+    np.testing.assert_allclose(grid.latitudes[0, 0], 45.0, atol=1e-2)
+
+
+def test_rotated_grid_latlon_is_unrotated() -> None:
+    crs = CRS.from_cf(
+        {
+            "grid_mapping_name": "rotated_latitude_longitude",
+            "grid_north_pole_latitude": 37.5,
+            "grid_north_pole_longitude": 177.5,
+        }
+    )
+    grid = Grid([0.0, 1.0], [0.0, 1.0], crs)
+    np.testing.assert_allclose(grid.latitudes[0, 0], 52.5)
+    np.testing.assert_allclose(grid.longitudes[0, 0], -2.5)
+
+
+@pytest.mark.parametrize("crs", [PARIS, "EPSG:4807"])
+def test_projection_respects_prime_meridian(crs: str) -> None:
+    projection = Grid([0.0, 1.0], [45.0, 46.0], crs).projection
+    lon, _ = ccrs.PlateCarree().transform_point(0.0, 45.0, projection)
+    np.testing.assert_allclose(lon, PARIS_DEGREES, atol=1e-2)
+
+
+@pytest.mark.parametrize("crs", ["EPSG:4326", "OGC:CRS84", "+proj=longlat +R=6371229"])
+def test_plain_latlon_projection_is_plate_carree(crs: str) -> None:
+    assert isinstance(Grid([0.0, 1.0], [0.0, 1.0], crs).projection, ccrs.PlateCarree)
+
+
+def test_projection_keeps_datum() -> None:
+    # OSGB 1936 is offset from WGS 84 by about 100 m
+    projection = Grid([0.0, 1.0], [52.0, 53.0], "EPSG:4277").projection
+    assert not isinstance(projection, ccrs.PlateCarree)
+    lon, _ = ccrs.CRS("EPSG:4326").transform_point(-2.0, 52.0, projection)
+    assert abs(lon + 2.0) > 1e-3

@@ -11,7 +11,8 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike
 from pyproj import CRS
 
-from autogrid.adaptors.cartopy import cartopy_projection
+from autogrid.adaptors.cartopy import cartopy_projection, described_by_globe
+from autogrid.adaptors.pyproj import prime_meridian_degrees, proj4_dict
 from autogrid.grid import Grid
 
 
@@ -36,17 +37,61 @@ class _CartopyCS(CoordSystem):
         return f"{type(self).__name__}({self.crs.to_string()!r})"
 
 
+class _CartopyGeogCS(GeogCS):
+    """An iris GeogCS that delegates to cartopy, keeping the full CRS.
+
+    A plain GeogCS transforms with only its ellipsoid, which would drop a
+    datum shift. This respects the prime meridian and datum when iris
+    transforms between coordinate systems, while still being a GeogCS so that
+    iris wraps longitudes.
+    """
+
+    def __init__(self, crs: CRS) -> None:
+        cf = crs.to_cf()
+        super().__init__(
+            cf["semi_major_axis"],
+            cf["semi_minor_axis"],
+            longitude_of_prime_meridian=prime_meridian_degrees(crs),
+        )
+        self.crs = crs
+
+    def as_cartopy_crs(self) -> ccrs.CRS:
+        return ccrs.CRS(self.crs)
+
+    def as_cartopy_projection(self) -> ccrs.Projection:
+        return cartopy_projection(self.crs)
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.crs.to_string()!r})"
+
+
 @cache
 def coord_system(crs: CRS) -> CoordSystem:
     """Return the iris coordinate system for a pyproj CRS.
 
-    Latitude-longitude CRSs must be an iris GeogCS for iris to wrap longitudes.
+    Latitude-longitude CRSs must be an iris GeogCS for iris to wrap longitudes,
+    and a plain one if an ellipsoid, or the WGS 84 datum, fully describes them.
     Anything else is wrapped.
+
+    Raises:
+        ValueError: If a latitude-longitude CRS is not in degrees, which iris
+            requires.
     """
     cf = crs.to_cf()
-    if cf.get("grid_mapping_name") == "latitude_longitude":
+    if cf.get("grid_mapping_name") != "latitude_longitude":
+        return _CartopyCS(crs)
+    if any(axis.unit_name != "degree" for axis in crs.axis_info):
+        msg = (
+            f"Latitude-longitude CRS {crs.name!r} must be in degrees, but has "
+            f"units {[axis.unit_name for axis in crs.axis_info]}."
+        )
+        raise ValueError(msg)
+    if described_by_globe(crs):
+        # Keep a WGS 84 datum, so iris shifts between it and other datums
+        if (datum := proj4_dict(crs).get("datum")) is not None:
+            return GeogCS.from_datum(datum)
         return GeogCS(cf["semi_major_axis"], cf["semi_minor_axis"])
-    return _CartopyCS(crs)
+    return _CartopyGeogCS(crs)
 
 
 def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:

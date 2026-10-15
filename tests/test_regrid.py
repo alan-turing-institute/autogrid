@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+from pyproj import Transformer
 
 from autogrid import Grid, Regridder, nearest_indices
 from autogrid.grids import EASE2Grid, LatLonGrid
@@ -197,3 +198,34 @@ def test_nearest_great_circle_uses_source_datum() -> None:
     )
     for g, want in zip(got, expected, strict=True):
         np.testing.assert_array_equal(g, want)
+
+
+@pytest.mark.parametrize("method", ["linear", "nearest", "nearest_great_circle"])
+def test_regrid_respects_prime_meridian(method: Method) -> None:
+    # Longitudes relative to the Paris meridian, 2.34 degrees east of Greenwich
+    source = Grid(
+        np.arange(-10, 10.01, 0.1),
+        np.arange(40, 52.01, 0.1),
+        "+proj=longlat +ellps=clrk80ign +pm=paris +no_defs",
+    )
+    target = Grid(np.arange(-5, 10.01, 0.5), np.arange(42, 50.01, 0.5), "EPSG:4326")
+    paris_degrees = 2.5969213 * 0.9
+    result = Regridder(source, target).apply(source.x + paris_degrees, method)
+    np.testing.assert_allclose(result, target.x, atol=0.05)
+
+
+def test_regrid_respects_datum() -> None:
+    # OSGB 1936 is offset from WGS 84 by about 0.002 degrees of longitude here
+    source = Grid(np.arange(-5, 1.01, 0.05), np.arange(50, 56.01, 0.05), "EPSG:4277")
+    target = Grid(np.arange(-4, 0.01, 0.5), np.arange(51, 55.01, 0.5), "EPSG:4326")
+    result = Regridder(source, target).apply(source.x, "linear")
+    expected, _ = Transformer.from_crs(
+        target.crs, source.crs, always_xy=True
+    ).transform(target.x, target.y)
+    np.testing.assert_allclose(result, expected, atol=1e-5)
+
+
+def test_regrid_rejects_latlon_not_in_degrees() -> None:
+    source = Grid(np.arange(0, 10.0), np.arange(40, 50.0), "EPSG:4807")
+    with pytest.raises(ValueError, match="must be in degrees"):
+        Regridder(source, LatLonGrid(1.0)).apply(np.zeros(source.shape))
