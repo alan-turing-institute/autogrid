@@ -10,7 +10,8 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
 
-from autogrid.adaptors.iris import NearestGreatCircle, to_cube
+from autogrid import nearest
+from autogrid.adaptors.iris import to_cube
 from autogrid.grid import Grid
 
 NearestMethod = Literal["nearest", "nearest_great_circle"]
@@ -73,8 +74,6 @@ class Regridder:
                     scheme = Linear(extrapolation_mode="extrapolate")
                 case "nearest":
                     scheme = Nearest(extrapolation_mode="extrapolate")
-                case "nearest_great_circle":
-                    scheme = NearestGreatCircle()
                 case "area_weighted":
                     scheme = AreaWeighted()
                 case _:
@@ -109,7 +108,11 @@ class Regridder:
                 f"shape {self.source.shape}."
             )
             raise ValueError(msg)
-        result = self._regridder(method)(to_cube(self.source, data)).data
+        if method == "nearest_great_circle":
+            iy, ix = self.nearest_indices(method)
+            result = data[..., iy, ix]
+        else:
+            result = self._regridder(method)(to_cube(self.source, data)).data
         result = np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
         result[..., self.outside_source] = np.nan
         return result
@@ -135,6 +138,16 @@ class Regridder:
         if method not in get_args(NearestMethod):
             msg = f"Unknown nearest neighbour method {method!r}."
             raise ValueError(msg)
+        if method == "nearest_great_circle" and method not in self._nearest_indices:
+            # Search the Grids' own latitudes and longitudes, rather than
+            # rebuilding Grids from iris cubes, which can lose CRS detail
+            iy, ix = nearest.nearest_indices(
+                self.source.latitudes,
+                self.source.longitudes,
+                self.target.latitudes,
+                self.target.longitudes,
+            )
+            self._nearest_indices[method] = (iy, ix)
         if method not in self._nearest_indices:
             # Regrid the flat index of each source point, which nearest neighbour
             # regridding copies exactly into each target point
