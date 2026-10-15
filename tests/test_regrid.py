@@ -223,3 +223,26 @@ def test_nearest_great_circle_uses_source_datum() -> None:
     )
     for got, want in zip(regridder.indices, expected, strict=True):
         np.testing.assert_array_equal(got, want)
+
+
+def test_nearest_great_circle_handles_latlon_without_coord_system(
+    latlon: LatLonGrid, south: EASE2Grid
+) -> None:
+    # netCDF files with no grid_mapping give coordinates with no coord_system
+    source = to_cube(latlon)
+    for coord in source.coords():
+        coord.coord_system = None
+    regridder = NearestGreatCircle().regridder(source, to_cube(south))
+    expected = NearestGreatCircle().regridder(to_cube(latlon), to_cube(south))
+    for got, want in zip(regridder.indices, expected.indices, strict=True):
+        np.testing.assert_array_equal(got, want)
+
+
+def test_nearest_great_circle_rejects_projected_without_coord_system(
+    latlon: LatLonGrid, south: EASE2Grid
+) -> None:
+    target = to_cube(south)
+    for coord in target.coords():
+        coord.coord_system = None
+    with pytest.raises(ValueError, match="no coordinate system"):
+        NearestGreatCircle().regridder(to_cube(latlon), target)

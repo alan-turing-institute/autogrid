@@ -5,6 +5,7 @@ from typing import Literal
 
 import cartopy.crs as ccrs
 import numpy as np
+from iris.analysis.cartography import DEFAULT_SPHERICAL_EARTH_RADIUS
 from iris.coord_systems import CoordSystem, GeogCS
 from iris.coords import DimCoord
 from iris.cube import Cube
@@ -120,8 +121,7 @@ class NearestGreatCircleRegridder:
         self._src_coords = self.yx_coords(src_cube)
         self._target_coords = self.yx_coords(target_cube)
         src, target = (
-            Grid(x.points, y.points, x.coord_system.as_cartopy_crs())
-            for y, x in (self._src_coords, self._target_coords)
+            self._grid(y, x) for y, x in (self._src_coords, self._target_coords)
         )
         self.indices: tuple[NDArray[np.intp], ...] = nearest_indices(
             src.latitudes, src.longitudes, target.latitudes, target.longitudes
@@ -152,6 +152,30 @@ class NearestGreatCircleRegridder:
         )
         result.metadata = src.metadata
         return result
+
+    @staticmethod
+    def _grid(y: DimCoord, x: DimCoord) -> Grid:
+        """Build a Grid from y and x dimension coordinates.
+
+        Coordinates with no coordinate system, as from netCDF files with no
+        grid_mapping, are taken to be latitude and longitude on a sphere, as
+        iris does. Any other coordinates must have a coordinate system.
+        """
+        cs = x.coord_system or y.coord_system
+        if cs is not None:
+            return Grid(x.points, y.points, cs.as_cartopy_crs())
+        if (y.standard_name, x.standard_name) != ("latitude", "longitude"):
+            msg = (
+                f"The {y.standard_name!r} and {x.standard_name!r} coordinates have"
+                " no coordinate system. Only latitude and longitude can be used"
+                " without one."
+            )
+            raise ValueError(msg)
+        return Grid(
+            x.units.convert(x.points, "degrees"),
+            y.units.convert(y.points, "degrees"),
+            GeogCS(DEFAULT_SPHERICAL_EARTH_RADIUS).as_cartopy_crs(),
+        )
 
     @staticmethod
     def yx_coords(cube: Cube) -> tuple[DimCoord, DimCoord]:
