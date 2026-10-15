@@ -10,8 +10,10 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 
 from autogrid.grid import Grid
+from autogrid.schemes import NearestGreatCircle
 
-Method = Literal["linear", "nearest", "area_weighted"]
+NearestMethod = Literal["nearest", "nearest_great_circle"]
+Method = Literal["linear", "area_weighted"] | NearestMethod
 
 
 def _cube(grid: Grid, data: ArrayLike | None = None) -> Cube:
@@ -46,27 +48,12 @@ class Regridder:
         self.source = source
         self.target = target
         self._regridders: dict[Method, Callable[[Cube], Cube]] = {}
+        self._nearest_indices: dict[
+            NearestMethod, tuple[NDArray[np.intp], NDArray[np.intp]]
+        ] = {}
 
-    @cached_property
-    def nearest_indices(self) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
-        """Source grid indices of the nearest source point to each target point.
-
-        Use these to apply nearest neighbour regridding externally, e.g. to
-        torch tensors on a GPU, with data[..., iy, ix]. This gives the same
-        values as apply(data, "nearest"), except that target points outside the
-        source grid take the value of the nearest source point at its edge
-        rather than NaN. Use outside_source to mask these if needed.
-
-        Returns:
-            Tuple of (iy, ix) integer arrays with the target grid shape (ny, nx),
-            giving the row and column of the nearest source point.
-        """
-        # Regrid the flat index of each source point, which nearest neighbour
-        # regridding copies exactly into each target point
-        flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
-        flat = flat.reshape(self.source.shape)
-        result = self._regridder("nearest")(_cube(self.source, flat)).data
-        return np.unravel_index(np.asarray(result).astype(np.intp), self.source.shape)
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({self.source!r} -> {self.target!r})"
 
     @cached_property
     def outside_source(self) -> NDArray[np.bool_]:
@@ -98,6 +85,8 @@ class Regridder:
                     scheme = Linear(extrapolation_mode="extrapolate")
                 case "nearest":
                     scheme = Nearest(extrapolation_mode="extrapolate")
+                case "nearest_great_circle":
+                    scheme = NearestGreatCircle()
                 case "area_weighted":
                     scheme = AreaWeighted()
                 case _:
@@ -113,7 +102,11 @@ class Regridder:
 
         Args:
             data: Array whose last two dimensions match the source grid shape.
-            method: "linear", "nearest" or "area_weighted". Area weighted
+            method: "linear", "nearest", "nearest_great_circle" or
+                "area_weighted". "nearest" finds the nearest point in the source
+                grid's own coordinates, which for a latitude-longitude source
+                means nearest in degrees, while "nearest_great_circle" finds the
+                nearest point along the Earth's surface. Area weighted
                 regridding requires both grids to share a coordinate system.
 
         Returns:
@@ -133,5 +126,35 @@ class Regridder:
         result[..., self.outside_source] = np.nan
         return result
 
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.source!r} -> {self.target!r})"
+    def nearest_indices(
+        self, method: NearestMethod = "nearest"
+    ) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
+        """Source grid indices of the nearest source point to each target point.
+
+        Use these to apply nearest neighbour regridding externally, e.g. to
+        torch tensors on a GPU, with data[..., iy, ix]. This gives the same
+        values as apply(data, method), except that target points outside the
+        source grid take the value of the nearest source point at its edge
+        rather than NaN. Use outside_source to mask these if needed.
+
+        Args:
+            method: "nearest" or "nearest_great_circle", as for apply.
+
+        Returns:
+            Tuple of (iy, ix) integer arrays with the target grid shape (ny, nx),
+            giving the row and column of the nearest source point.
+        """
+        if method not in ("nearest", "nearest_great_circle"):
+            msg = f"Unknown nearest neighbour method {method!r}."
+            raise ValueError(msg)
+        if method not in self._nearest_indices:
+            # Regrid the flat index of each source point, which nearest neighbour
+            # regridding copies exactly into each target point
+            flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
+            flat = flat.reshape(self.source.shape)
+            result = self._regridder(method)(_cube(self.source, flat)).data
+            iy, ix = np.unravel_index(
+                np.asarray(result).astype(np.intp), self.source.shape
+            )
+            self._nearest_indices[method] = (iy, ix)
+        return self._nearest_indices[method]
