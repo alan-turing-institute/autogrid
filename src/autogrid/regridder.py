@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from functools import cached_property
-from typing import Literal
+from typing import Literal, get_args
 
 import numpy as np
 from iris.analysis import AreaWeighted, Linear, Nearest
@@ -132,7 +132,7 @@ class Regridder:
             Tuple of (iy, ix) integer arrays with the target grid shape (ny, nx),
             giving the row and column of the nearest source point.
         """
-        if method not in ("nearest", "nearest_great_circle"):
+        if method not in get_args(NearestMethod):
             msg = f"Unknown nearest neighbour method {method!r}."
             raise ValueError(msg)
         if method not in self._nearest_indices:

@@ -1,10 +1,10 @@
 """Regridding schemes that follow the iris scheme interface."""
 
-import cartopy.crs as ccrs
 import numpy as np
 from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import NDArray
+from pyproj import Transformer
 from scipy.spatial import cKDTree
 
 
@@ -22,8 +22,13 @@ def _unit_vectors(cube: Cube) -> NDArray[np.float64]:
     """Return the (n, 3) unit sphere position of each horizontal point of a cube."""
     y, x = _horizontal_coords(cube)
     xx, yy = np.meshgrid(x.points, y.points)
-    lonlat = ccrs.Geodetic().transform_points(x.coord_system.as_cartopy_crs(), xx, yy)
-    lon, lat = np.deg2rad(lonlat[..., 0]), np.deg2rad(lonlat[..., 1])
+    # Cartopy CRSs are pyproj CRSs. Use the CRS's own datum, with no datum shift,
+    # to match Grid.latitudes and Grid.longitudes
+    crs = x.coord_system.as_cartopy_crs()
+    lon, lat = Transformer.from_crs(crs, crs.geodetic_crs, always_xy=True).transform(
+        xx, yy
+    )
+    lon, lat = np.deg2rad(lon), np.deg2rad(lat)
     return np.stack(
         [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1
     ).reshape(-1, 3)

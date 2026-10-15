@@ -5,6 +5,7 @@ from iris.coords import DimCoord
 from autogrid import Grid, Regridder
 from autogrid.grids import EASE2Grid, LatLonGrid
 from autogrid.iris import NearestGreatCircle, to_cube
+from autogrid.iris.schemes import _unit_vectors
 
 
 @pytest.fixture(scope="module")
@@ -249,3 +250,14 @@ def test_nearest_great_circle_rejects_cube_on_other_grid(
     regridder = NearestGreatCircle().regridder(to_cube(latlon), to_cube(south))
     with pytest.raises(ValueError, match="not on the source grid"):
         regridder(to_cube(LatLonGrid(2.0), np.zeros((90, 180))))
+
+
+def test_nearest_great_circle_uses_source_datum() -> None:
+    # On British National Grid (OSGB36 datum) the scheme must find the nearest
+    # points by the same latitudes and longitudes as Grid, with no datum shift
+    grid = Grid(np.arange(0, 700000, 50000.0), np.arange(0, 1200000, 50000.0), 27700)
+    lat, lon = np.deg2rad(grid.latitudes), np.deg2rad(grid.longitudes)
+    expected = np.stack(
+        [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1
+    ).reshape(-1, 3)
+    np.testing.assert_allclose(_unit_vectors(to_cube(grid)), expected, atol=1e-12)
