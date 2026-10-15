@@ -2,9 +2,11 @@
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.sparse import csr_array
+from scipy.spatial import cKDTree
 
 from autogrid.grid import Grid
-from autogrid.sphere import check_points, chord_to_km, unit_vectors
+from autogrid.sphere import check_points, chord_to_km, km_to_chord, unit_vectors
 
 # Largest number of (target, source) weights held in memory at once
 _CHUNK_ELEMENTS = 2**24
@@ -17,6 +19,7 @@ def points_to_grid(
     target_grid: Grid,
     distance_scale_km: float,
     min_weight: float = 1e-10,
+    max_distance_km: float | None = None,
 ) -> NDArray[np.floating]:
     """Interpolate scattered observations onto a Grid with Gaussian weights."""
     return points_to_points(
@@ -27,6 +30,7 @@ def points_to_grid(
         target_grid.longitudes,
         distance_scale_km,
         min_weight,
+        max_distance_km,
     )
 
 
@@ -38,6 +42,7 @@ def points_to_points(
     target_lons: ArrayLike,
     distance_scale_km: float,
     min_weight: float = 1e-10,
+    max_distance_km: float | None = None,
 ) -> NDArray[np.floating]:
     """Interpolate scattered observations onto target points with Gaussian weights.
 
@@ -50,6 +55,15 @@ def points_to_points(
     unweighted mean of the observations rather than to NaN. Set min_weight to 0
     to leave such points NaN once their weights underflow.
 
+    By default every observation is weighted at every target point, which costs
+    time and memory proportional to their product. Set max_distance_km to give
+    zero weight to observations further away than this, finding the nearby ones
+    with a KD-tree. This is much faster when the cutoff is small compared with
+    the spread of the observations, e.g. around 5 * distance_scale_km, beyond
+    which weights are below 4e-6. Target points with no observations within the
+    cutoff are NaN, rather than the unweighted mean of the observations. If the
+    cutoff includes most pairs, this is much slower than the default.
+
     Args:
         source_lats: Latitude of each observation in degrees, of any shape.
         source_lons: Longitude of each observation in degrees, of the same shape.
@@ -59,7 +73,10 @@ def points_to_points(
             e.g. Grid.latitudes.
         target_lons: Longitude of each target point in degrees, of the same shape.
         distance_scale_km: Standard deviation of the Gaussian weights in km.
-        min_weight: Smallest weight given to any observation.
+        min_weight: Smallest weight given to any observation within
+            max_distance_km.
+        max_distance_km: Great circle distance in km beyond which observations
+            are given zero weight, or None to weight every observation.
 
     Returns:
         An array with the leading dimensions of values followed by the target
@@ -68,7 +85,8 @@ def points_to_points(
     Raises:
         ValueError: If latitudes and longitudes differ in shape, are empty, or
             are not all finite, if values do not end with the source shape, or
-            if distance_scale_km is not positive or min_weight is negative.
+            if distance_scale_km or max_distance_km is not positive, or if
+            min_weight is negative.
     """
     source_lats, source_lons = check_points("Source", source_lats, source_lons)
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
@@ -86,6 +104,9 @@ def points_to_points(
     if not min_weight >= 0:
         msg = f"min_weight must not be negative, but got {min_weight}."
         raise ValueError(msg)
+    if max_distance_km is not None and not max_distance_km > 0:
+        msg = f"max_distance_km must be positive, but got {max_distance_km}."
+        raise ValueError(msg)
 
     leading_shape = values.shape[: values.ndim - len(source_shape)]
     flat_values = values.reshape(-1, source_lats.size).astype(np.float64)
@@ -96,17 +117,32 @@ def points_to_points(
 
     source_xyz = unit_vectors(source_lats, source_lons)
     target_xyz = unit_vectors(target_lats, target_lons)
-    result = np.empty((flat_values.shape[0], len(target_xyz)))
-    chunk = max(1, _CHUNK_ELEMENTS // len(source_xyz))
-    for start in range(0, len(target_xyz), chunk):
-        block = slice(start, start + chunk)
-        # |a - b|^2 = 2 - 2 a.b for unit vectors a and b
-        chord_sq = 2.0 - 2.0 * (target_xyz[block] @ source_xyz.T)
-        distance_km = chord_to_km(np.sqrt(chord_sq.clip(min=0.0)))
-        weights = np.exp(-0.5 * (distance_km / distance_scale_km) ** 2)
-        weights = weights.clip(min=min_weight)  # shape: (n_block, n_source)
+
+    def gaussian(chord: NDArray[np.float64]) -> NDArray[np.float64]:
+        weights = np.exp(-0.5 * (chord_to_km(chord) / distance_scale_km) ** 2)
+        return weights.clip(min=min_weight)
+
+    if max_distance_km is not None:
+        # Only pairs within the cutoff, with i indexing targets and j sources
+        pairs = cKDTree(target_xyz).sparse_distance_matrix(
+            cKDTree(source_xyz), km_to_chord(max_distance_km), output_type="ndarray"
+        )
+        weights = csr_array(
+            (gaussian(pairs["v"]), (pairs["i"], pairs["j"])),
+            shape=(len(target_xyz), len(source_xyz)),
+        )
         with np.errstate(invalid="ignore", divide="ignore"):
-            result[:, block] = (filled @ weights.T) / (valid @ weights.T)
+            result = ((weights @ filled.T) / (weights @ valid.T)).T
+    else:
+        result = np.empty((flat_values.shape[0], len(target_xyz)))
+        chunk = max(1, _CHUNK_ELEMENTS // len(source_xyz))
+        for start in range(0, len(target_xyz), chunk):
+            block = slice(start, start + chunk)
+            # |a - b|^2 = 2 - 2 a.b for unit vectors a and b
+            chord_sq = 2.0 - 2.0 * (target_xyz[block] @ source_xyz.T)
+            weights = gaussian(np.sqrt(chord_sq.clip(min=0.0)))
+            with np.errstate(invalid="ignore", divide="ignore"):
+                result[:, block] = (filled @ weights.T) / (valid @ weights.T)
 
     result[~np.isfinite(result)] = np.nan
     result = result.astype(np.result_type(values.dtype, np.float32))

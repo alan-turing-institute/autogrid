@@ -147,3 +147,64 @@ def test_rejects_invalid_arguments(kwargs: dict, match: str) -> None:
     } | kwargs
     with pytest.raises(ValueError, match=match):
         points_to_points(**args)
+
+
+def test_max_distance_beyond_globe_matches_dense(
+    target: EASE2Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
+) -> None:
+    lat, lon, values = observations
+    args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
+    np.testing.assert_allclose(
+        points_to_points(*args, max_distance_km=25000.0),
+        points_to_points(*args),
+        rtol=1e-12,
+        atol=1e-14,
+    )
+
+
+def test_max_distance_matches_brute_force(
+    target: EASE2Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
+) -> None:
+    lat, lon, values = observations
+    distance_scale_km, max_distance_km = 300.0, 800.0
+    result = points_to_points(
+        lat,
+        lon,
+        values,
+        target.latitudes,
+        target.longitudes,
+        distance_scale_km,
+        max_distance_km=max_distance_km,
+    )
+    distance_km = _haversine_km(
+        target.latitudes.ravel()[:, None], target.longitudes.ravel()[:, None], lat, lon
+    )
+    weights = np.exp(-0.5 * (distance_km / distance_scale_km) ** 2).clip(min=1e-10)
+    weights[distance_km > max_distance_km] = 0.0
+    with np.errstate(invalid="ignore"):
+        expected = (values @ weights.T) / weights.sum(axis=1)
+    expected = expected.reshape(3, *target.shape)
+    # Some target points have no observations within the cutoff, others do
+    assert np.isnan(expected).any() and np.isfinite(expected).any()
+    np.testing.assert_array_equal(np.isnan(result), np.isnan(expected))
+    np.testing.assert_allclose(result, expected, rtol=1e-9, atol=1e-12)
+
+
+def test_max_distance_includes_coincident_points() -> None:
+    lat, lon = np.array([-70.0, -65.0]), np.array([0.0, 90.0])
+    result = points_to_points(
+        lat, lon, [1.0, 2.0], lat, lon, distance_scale_km=10.0, max_distance_km=1.0
+    )
+    np.testing.assert_allclose(result, [1.0, 2.0])
+
+
+def test_max_distance_leaves_far_points_nan() -> None:
+    result = points_to_points(
+        [60.0], [0.0], [1.0], [60.0, -60.0], [0.0, 0.0], 50.0, max_distance_km=250.0
+    )
+    np.testing.assert_array_equal(np.isnan(result), [False, True])
+
+
+def test_rejects_non_positive_max_distance() -> None:
+    with pytest.raises(ValueError, match="max_distance_km must be positive"):
+        points_to_points([0.0], [0.0], [1.0], [0.0], [0.0], 100.0, max_distance_km=0)

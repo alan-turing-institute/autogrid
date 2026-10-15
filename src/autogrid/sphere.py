@@ -33,6 +33,14 @@ def chord_to_km(chord: NDArray[np.float64]) -> NDArray[np.float64]:
     return 2.0 * EARTH_RADIUS_KM * np.arcsin(np.clip(chord, 0.0, 2.0) / 2.0)
 
 
+def km_to_chord(distance_km: ArrayLike) -> NDArray[np.float64]:
+    """Convert great circle km to straight-line distances between unit vectors."""
+    angle = np.clip(
+        np.asarray(distance_km, dtype=np.float64) / EARTH_RADIUS_KM, 0, np.pi
+    )
+    return 2.0 * np.sin(angle / 2.0)
+
+
 def unit_vectors(
     latitudes: NDArray[np.float64], longitudes: NDArray[np.float64]
 ) -> NDArray[np.float64]:
