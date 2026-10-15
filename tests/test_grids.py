@@ -22,6 +22,12 @@ def test_latlon_grid_rejects_uneven_resolution() -> None:
         LatLonGrid(0.7)
 
 
+@pytest.mark.parametrize("resolution", [0, -1.0, -180, 360, np.inf, np.nan])
+def test_latlon_grid_rejects_out_of_range_resolution(resolution: float) -> None:
+    with pytest.raises(ValueError, match="must be in"):
+        LatLonGrid(resolution)
+
+
 def test_latlon_grid_equals_plain_grid() -> None:
     lon = np.arange(-179.5, 180, 1.0)
     lat = np.arange(-89.5, 90, 1.0)
