@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
 
-from autogrid.iris._convert import coord_system
+from autogrid.adaptors import cartopy_projection
 
 # Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
 CRSLike = int | str | dict[str, Any] | CRS
@@ -70,11 +70,7 @@ class Grid:
     @property
     def projection(self) -> ccrs.Projection:
         """The cartopy projection of this grid, e.g. for plotting map axes."""
-        projection = coord_system(self.crs).as_cartopy_projection()
-        if not isinstance(projection, ccrs.Projection):
-            msg = f"CRS {self.crs.to_string()} is not a cartopy projection."
-            raise ValueError(msg)
-        return projection
+        return cartopy_projection(self.crs)
 
     @property
     def shape(self) -> tuple[int, int]:

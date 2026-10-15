@@ -1,3 +1,4 @@
+import cartopy.crs as ccrs
 import numpy as np
 import pytest
 from pyproj import CRS
@@ -142,3 +143,16 @@ def test_grids_with_different_crs_are_not_equal() -> None:
 def test_ease2_projection_has_plot_limits(region: str) -> None:
     x_min, x_max = EASE2Grid(region, "36p0km").projection.x_limits
     assert x_max - x_min > 1e7
+
+
+def test_rotated_grid_projection_is_rotated_pole() -> None:
+    crs = CRS.from_cf(
+        {
+            "grid_mapping_name": "rotated_latitude_longitude",
+            "grid_north_pole_latitude": 37.5,
+            "grid_north_pole_longitude": 177.5,
+        }
+    )
+    projection = Grid(np.linspace(-5, 5, 20), np.linspace(-5, 5, 30), crs).projection
+    assert isinstance(projection, ccrs.RotatedPole)
+    assert projection.proj4_params["o_lat_p"] == 37.5

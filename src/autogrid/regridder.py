@@ -10,8 +10,8 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
 
+from autogrid.adaptors.iris import NearestGreatCircle, to_cube
 from autogrid.grid import Grid
-from autogrid.iris import NearestGreatCircle, to_cube
 
 NearestMethod = Literal["nearest", "nearest_great_circle"]
 Method = Literal["linear", "area_weighted"] | NearestMethod
