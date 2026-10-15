@@ -78,10 +78,23 @@ def test_ease2_subset_aligns_with_full_grid() -> None:
     np.testing.assert_array_equal(subset.x_points, full.x_points[offset : offset + 432])
 
 
-@pytest.mark.parametrize("shape", [(431, 431), (800, 800)])
+@pytest.mark.parametrize("shape", [(431, 431), (800, 800), (0, 0), (-2, 432)])
 def test_ease2_rejects_misaligned_subset(shape: tuple[int, int]) -> None:
     with pytest.raises(ValueError, match="centred subset"):
         EASE2Grid("south", "25p0km", shape=shape)
+
+
+@pytest.mark.parametrize(
+    ("region", "resolution", "match"),
+    [
+        ("east", "25p0km", "Unknown region"),
+        ("south", "25km", "Unknown resolution"),
+        ("global", "10p0km", "Unknown resolution"),
+    ],
+)
+def test_ease2_rejects_unknown_spec(region: str, resolution: str, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        EASE2Grid(region, resolution)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

@@ -59,11 +59,24 @@ class EASE2Grid(Grid):
                 origin. Each dimension must have the same parity as the full
                 grid so that cells align with the official grid. Defaults to
                 the full grid.
+
+        Raises:
+            ValueError: If the region or resolution is unknown, or the shape is
+                not a non-empty centred subset of the full grid.
         """
+        if region not in SPEC:
+            msg = f"Unknown region {region!r}; expected one of {list(SPEC)}."
+            raise ValueError(msg)
+        if resolution not in SPEC[region]:
+            msg = (
+                f"Unknown resolution {resolution!r} for region {region!r}; "
+                f"expected one of {list(SPEC[region])}."
+            )
+            raise ValueError(msg)
         cell, full_shape = SPEC[region][resolution]
         shape = shape or full_shape
         for n, n_full in zip(shape, full_shape, strict=True):
-            if n > n_full or (n_full - n) % 2:
+            if not 0 < n <= n_full or (n_full - n) % 2:
                 msg = f"Shape {shape} is not a centred subset of {full_shape}."
                 raise ValueError(msg)
         self.region = region
