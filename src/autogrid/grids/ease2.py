@@ -1,9 +1,7 @@
 from typing import Literal
 
 import numpy as np
-from iris.coord_systems import CoordSystem, LambertAzimuthalEqualArea
 
-from autogrid.coord_systems import WGS84, EASE2GlobalCS
 from autogrid.grid import Grid
 
 Region = Literal["north", "south", "global"]
@@ -36,16 +34,8 @@ SPEC: dict[Region, dict[str, tuple[float, tuple[int, int]]]] = {
 }
 
 
-def _coord_system(region: Region) -> CoordSystem:
-    if region == "global":
-        return EASE2GlobalCS()
-    return LambertAzimuthalEqualArea(
-        latitude_of_projection_origin=90.0 if region == "north" else -90.0,
-        longitude_of_projection_origin=0.0,
-        false_easting=0.0,
-        false_northing=0.0,
-        ellipsoid=WGS84,
-    )
+# EPSG code of the EASE-Grid 2.0 CRS for each region
+EPSG: dict[Region, int] = {"north": 6931, "south": 6932, "global": 6933}
 
 
 class EASE2Grid(Grid):
@@ -81,7 +71,7 @@ class EASE2Grid(Grid):
         ny, nx = shape
         x_points = (np.arange(nx) - (nx - 1) / 2) * cell
         y_points = ((ny - 1) / 2 - np.arange(ny)) * cell
-        super().__init__(x_points, y_points, _coord_system(region))
+        super().__init__(x_points, y_points, EPSG[region])
 
     def __repr__(self) -> str:
         return (

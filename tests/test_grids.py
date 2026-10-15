@@ -1,17 +1,17 @@
 import numpy as np
 import pytest
-from iris.coord_systems import LambertAzimuthalEqualArea, RotatedGeogCS
+from pyproj import CRS
 
-from autogrid import EASE2Grid, Grid, LatLonGrid
-from autogrid.coord_systems import WGS84, EASE2GlobalCS
+from autogrid import Grid
+from autogrid.grids import EASE2Grid, LatLonGrid
 
 
 def test_latlon_grid() -> None:
     grid = LatLonGrid(1.0)
     assert grid.shape == (180, 360)
-    assert grid.x_coord.points[0] == -179.5
-    assert grid.y_coord.points[-1] == 89.5
-    assert grid.x_coord.circular
+    assert grid.x_points[0] == -179.5
+    assert grid.y_points[-1] == 89.5
+    assert grid.is_circular
 
 
 def test_latlon_grid_rejects_uneven_resolution() -> None:
@@ -22,13 +22,13 @@ def test_latlon_grid_rejects_uneven_resolution() -> None:
 def test_latlon_grid_equals_plain_grid() -> None:
     lon = np.arange(-179.5, 180, 1.0)
     lat = np.arange(-89.5, 90, 1.0)
-    assert LatLonGrid(1.0) == Grid(lon, lat, WGS84)
+    assert LatLonGrid(1.0) == Grid(lon, lat, "EPSG:4326")
 
 
 @pytest.mark.parametrize(
     ("region", "epsg"), [("north", 6931), ("south", 6932), ("global", 6933)]
 )
-def test_ease2_coord_system(region: str, epsg: int) -> None:
+def test_ease2_crs(region: str, epsg: int) -> None:
     grid = EASE2Grid(region, "36p0km")
     assert grid.crs.to_epsg() == epsg
 
@@ -36,7 +36,7 @@ def test_ease2_coord_system(region: str, epsg: int) -> None:
 def test_ease2_south_25p0km() -> None:
     grid = EASE2Grid("south", "25p0km")
     assert grid.shape == (720, 720)
-    assert isinstance(grid.coord_system, LambertAzimuthalEqualArea)
+    assert grid.crs.to_epsg() == 6932
     # Rows run top to bottom, cell centres half a cell in from the edge
     assert grid.x[0, 0] == -8_987_500
     assert grid.y[0, 0] == 8_987_500
@@ -45,19 +45,17 @@ def test_ease2_south_25p0km() -> None:
 
 def test_ease2_global_extent() -> None:
     grid = EASE2Grid("global", "36p0km")
-    assert isinstance(grid.coord_system, EASE2GlobalCS)
-    x_min, x_max = grid.crs.x_limits
-    assert np.isclose(grid.x_coord.bounds[0, 0], x_min)
-    assert np.isclose(grid.x_coord.bounds[-1, 1], x_max)
+    # The global grid spans the whole width of the projection
+    x_min, x_max = grid.projection.x_limits
+    assert np.isclose(grid.x_bounds[0, 0], x_min)
+    assert np.isclose(grid.x_bounds[-1, 1], x_max)
 
 
 def test_ease2_subset_aligns_with_full_grid() -> None:
     full = EASE2Grid("south", "25p0km")
     subset = EASE2Grid("south", "25p0km", shape=(432, 432))
     offset = (720 - 432) // 2
-    np.testing.assert_array_equal(
-        subset.x_coord.points, full.x_coord.points[offset : offset + 432]
-    )
+    np.testing.assert_array_equal(subset.x_points, full.x_points[offset : offset + 432])
 
 
 @pytest.mark.parametrize("shape", [(431, 431), (800, 800)])
@@ -75,31 +73,37 @@ def test_ease2_rejects_misaligned_subset(shape: tuple[int, int]) -> None:
         Grid(
             np.linspace(-5, 5, 20),
             np.linspace(-5, 5, 30),
-            RotatedGeogCS(37.5, 177.5, ellipsoid=WGS84),
+            CRS.from_cf(
+                {
+                    "grid_mapping_name": "rotated_latitude_longitude",
+                    "grid_north_pole_latitude": 37.5,
+                    "grid_north_pole_longitude": 177.5,
+                }
+            ),
         ),
     ],
     ids=["latlon", "ease2-north", "ease2-global", "rotated"],
 )
 def test_from_latlon_recovers_grid(grid: Grid) -> None:
-    recovered = Grid.from_latlon(grid.latitudes, grid.longitudes, grid.coord_system)
+    recovered = Grid.from_latlon(grid.latitudes, grid.longitudes, grid.crs)
     assert type(recovered) is Grid
     assert recovered.shape == grid.shape
-    np.testing.assert_allclose(recovered.x_coord.points, grid.x_coord.points, atol=1e-6)
-    np.testing.assert_allclose(recovered.y_coord.points, grid.y_coord.points, atol=1e-6)
-    assert recovered.x_coord.circular == grid.x_coord.circular
+    np.testing.assert_allclose(recovered.x_points, grid.x_points, atol=1e-6)
+    np.testing.assert_allclose(recovered.y_points, grid.y_points, atol=1e-6)
+    assert recovered.is_circular == grid.is_circular
 
 
 def test_from_latlon_handles_dateline() -> None:
     lon, lat = np.meshgrid(np.arange(170.5, 190, 1.0), np.arange(-9.5, 10, 1.0))
     lon = (lon + 180) % 360 - 180  # 170.5 ... 179.5, -179.5 ... -170.5
-    grid = Grid.from_latlon(lat, lon, WGS84)
-    np.testing.assert_allclose(grid.x_coord.points, np.arange(170.5, 190, 1.0))
+    grid = Grid.from_latlon(lat, lon, "EPSG:4326")
+    np.testing.assert_allclose(grid.x_points, np.arange(170.5, 190, 1.0))
 
 
-def test_from_latlon_rejects_wrong_coord_system() -> None:
+def test_from_latlon_rejects_wrong_crs() -> None:
     grid = EASE2Grid("north", "25p0km", shape=(432, 432))
     with pytest.raises(ValueError, match="not on a rectilinear grid"):
-        Grid.from_latlon(grid.latitudes, grid.longitudes, WGS84)
+        Grid.from_latlon(grid.latitudes, grid.longitudes, "EPSG:4326")
 
 
 @pytest.mark.parametrize(
@@ -109,4 +113,32 @@ def test_from_latlon_rejects_wrong_coord_system() -> None:
 )
 def test_from_latlon_rejects_bad_shapes(lats: np.ndarray, lons: np.ndarray) -> None:
     with pytest.raises(ValueError, match="2D arrays of the same shape"):
-        Grid.from_latlon(lats, lons, WGS84)
+        Grid.from_latlon(lats, lons, "EPSG:4326")
+
+
+@pytest.mark.parametrize("crs", ["EPSG:6931", 6931, CRS.from_epsg(6931)])
+def test_grid_accepts_any_pyproj_crs_input(crs: object) -> None:
+    grid = Grid([-12500.0, 12500.0], [12500.0, -12500.0], crs)
+    assert grid == EASE2Grid("north", "25p0km", shape=(2, 2))
+
+
+def test_grid_has_no_iris_attributes() -> None:
+    grid = EASE2Grid("south", "25p0km", shape=(432, 432))
+    for name, value in vars(grid).items():
+        assert not type(value).__module__.startswith("iris"), name
+
+
+def test_grid_bounds_are_halfway_between_points() -> None:
+    grid = Grid([0.0, 1.0, 3.0], [10.0, 20.0], "EPSG:4326")
+    np.testing.assert_array_equal(grid.x_bounds, [[-0.5, 0.5], [0.5, 2.0], [2.0, 4.0]])
+    np.testing.assert_array_equal(grid.y_bounds, [[5.0, 15.0], [15.0, 25.0]])
+
+
+def test_grids_with_different_crs_are_not_equal() -> None:
+    assert EASE2Grid("north", "36p0km") != EASE2Grid("south", "36p0km")
+
+
+@pytest.mark.parametrize("region", ["north", "south", "global"])
+def test_ease2_projection_has_plot_limits(region: str) -> None:
+    x_min, x_max = EASE2Grid(region, "36p0km").projection.x_limits
+    assert x_max - x_min > 1e7

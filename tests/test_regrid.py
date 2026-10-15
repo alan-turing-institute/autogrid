@@ -1,16 +1,10 @@
 import numpy as np
 import pytest
 from iris.coords import DimCoord
-from iris.cube import Cube
 
-from autogrid import (
-    EASE2Grid,
-    Grid,
-    LatLonGrid,
-    Regridder,
-)
-from autogrid.coord_systems import WGS84
-from autogrid.schemes import NearestGreatCircle
+from autogrid import Grid, Regridder
+from autogrid.grids import EASE2Grid, LatLonGrid
+from autogrid.iris import NearestGreatCircle, to_cube
 
 
 @pytest.fixture(scope="module")
@@ -65,7 +59,7 @@ def test_regridder_handles_leading_dimensions(
 
 
 def test_points_outside_source_are_nan(south: EASE2Grid) -> None:
-    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), WGS84)
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
     result = Regridder(regional, south).apply(np.ones(regional.shape))
     assert np.isnan(result).any()
     np.testing.assert_allclose(result[~np.isnan(result)], 1.0)
@@ -115,7 +109,7 @@ def test_methods_differ_on_same_regridder(latlon: LatLonGrid, south: EASE2Grid) 
     "source",
     [
         LatLonGrid(1.0),
-        Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), WGS84),
+        Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326"),
     ],
     ids=["global", "regional"],
 )
@@ -225,7 +219,7 @@ def test_nearest_great_circle_handles_leading_dimensions_and_nan(
 
 
 def test_nearest_great_circle_outside_source_is_nan(south: EASE2Grid) -> None:
-    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), WGS84)
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
     result = Regridder(regional, south).apply(
         np.ones(regional.shape), "nearest_great_circle"
     )
@@ -236,36 +230,22 @@ def test_nearest_great_circle_outside_source_is_nan(south: EASE2Grid) -> None:
 def test_nearest_great_circle_works_as_iris_scheme(
     latlon: LatLonGrid, south: EASE2Grid
 ) -> None:
-    source = Cube(
-        np.ones((3, *latlon.shape)),
-        long_name="sea_ice",
-        units="1",
-        dim_coords_and_dims=[
-            (DimCoord([0, 1, 2], long_name="time", units="days since 2020-01-01"), 0),
-            (latlon.y_coord.copy(), 1),
-            (latlon.x_coord.copy(), 2),
-        ],
+    source = to_cube(latlon, np.ones((3, *latlon.shape)))
+    source.long_name = "sea_ice"
+    source.add_dim_coord(
+        DimCoord([0, 1, 2], long_name="time", units="days since 2020-01-01"), 0
     )
-    target = Cube(
-        np.zeros(south.shape),
-        dim_coords_and_dims=[(south.y_coord.copy(), 0), (south.x_coord.copy(), 1)],
-    )
+    target = to_cube(south)
     result = source.regrid(target, NearestGreatCircle())
     assert result.shape == (3, *south.shape)
     assert result.long_name == "sea_ice"
     assert result.coord("time") == source.coord("time")
-    assert result.coord(axis="x") == south.x_coord
+    assert result.coord(axis="x") == target.coord(axis="x")
 
 
 def test_nearest_great_circle_rejects_cube_on_other_grid(
     latlon: LatLonGrid, south: EASE2Grid
 ) -> None:
-    def cube(grid: Grid) -> Cube:
-        return Cube(
-            np.zeros(grid.shape),
-            dim_coords_and_dims=[(grid.y_coord.copy(), 0), (grid.x_coord.copy(), 1)],
-        )
-
-    regridder = NearestGreatCircle().regridder(cube(latlon), cube(south))
+    regridder = NearestGreatCircle().regridder(to_cube(latlon), to_cube(south))
     with pytest.raises(ValueError, match="not on the source grid"):
-        regridder(cube(LatLonGrid(2.0)))
+        regridder(to_cube(LatLonGrid(2.0), np.zeros((90, 180))))

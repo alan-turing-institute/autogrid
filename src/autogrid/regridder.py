@@ -8,26 +8,13 @@ import numpy as np
 from iris.analysis import AreaWeighted, Linear, Nearest
 from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
+from pyproj import Transformer
 
 from autogrid.grid import Grid
-from autogrid.schemes import NearestGreatCircle
+from autogrid.iris import NearestGreatCircle, to_cube
 
 NearestMethod = Literal["nearest", "nearest_great_circle"]
 Method = Literal["linear", "area_weighted"] | NearestMethod
-
-
-def _cube(grid: Grid, data: ArrayLike | None = None) -> Cube:
-    """Build an iris cube on a Grid, with any leading dimensions of data."""
-    shape = grid.shape if data is None else np.shape(data)
-    n_lead = len(shape) - 2
-    return Cube(
-        data,
-        shape=None if data is not None else shape,
-        dim_coords_and_dims=[
-            (grid.y_coord.copy(), n_lead),
-            (grid.x_coord.copy(), n_lead + 1),
-        ],
-    )
 
 
 class Regridder:
@@ -63,14 +50,15 @@ class Regridder:
             A boolean array with the target grid shape (ny, nx).
         """
         source, target = self.source, self.target
-        xy = source.crs.transform_points(target.crs, target.x, target.y)
-        x, y = xy[..., 0], xy[..., 1]
-        x_lo, x_hi = source.x_coord.bounds.min(), source.x_coord.bounds.max()
-        y_lo, y_hi = source.y_coord.bounds.min(), source.y_coord.bounds.max()
+        x, y = Transformer.from_crs(target.crs, source.crs, always_xy=True).transform(
+            target.x, target.y
+        )
+        x_lo, x_hi = source.x_bounds.min(), source.x_bounds.max()
+        y_lo, y_hi = source.y_bounds.min(), source.y_bounds.max()
         outside = ~np.isfinite(x) | ~np.isfinite(y) | (y < y_lo) | (y > y_hi)
-        if source.x_coord.circular:
+        if source.is_circular:
             return outside
-        if source.x_coord.units == "degrees":
+        if source.is_geographic:
             x = x_lo + (x - x_lo) % 360
         return outside | (x < x_lo) | (x > x_hi)
 
@@ -93,7 +81,7 @@ class Regridder:
                     msg = f"Unknown regridding method {method!r}."
                     raise ValueError(msg)
             self._regridders[method] = scheme.regridder(
-                _cube(self.source), _cube(self.target)
+                to_cube(self.source), to_cube(self.target)
             )
         return self._regridders[method]
 
@@ -121,7 +109,7 @@ class Regridder:
                 f"shape {self.source.shape}."
             )
             raise ValueError(msg)
-        result = self._regridder(method)(_cube(self.source, data)).data
+        result = self._regridder(method)(to_cube(self.source, data)).data
         result = np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
         result[..., self.outside_source] = np.nan
         return result
@@ -152,7 +140,7 @@ class Regridder:
             # regridding copies exactly into each target point
             flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
             flat = flat.reshape(self.source.shape)
-            result = self._regridder(method)(_cube(self.source, flat)).data
+            result = self._regridder(method)(to_cube(self.source, flat)).data
             iy, ix = np.unravel_index(
                 np.asarray(result).astype(np.intp), self.source.shape
             )

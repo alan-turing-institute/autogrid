@@ -1,6 +1,5 @@
 import numpy as np
 
-from autogrid.coord_systems import WGS84
 from autogrid.grid import Grid
 
 
@@ -25,7 +24,7 @@ class LatLonGrid(Grid):
         n_lat = round(180 / resolution)
         lon_points = -180 + (np.arange(n_lon) + 0.5) * resolution
         lat_points = -90 + (np.arange(n_lat) + 0.5) * resolution
-        super().__init__(lon_points, lat_points, WGS84)
+        super().__init__(lon_points, lat_points, "EPSG:4326")
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(resolution={self.resolution})"
