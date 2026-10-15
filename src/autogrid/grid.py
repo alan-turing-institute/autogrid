@@ -115,12 +115,12 @@ class Grid:
 
     @cached_property
     def x_bounds(self) -> NDArray[np.float64]:
-        """x coordinate bounds for each grid cell, with shape (ny, nx, 2)."""
+        """x coordinate bounds for each grid cell, with shape (nx, 2)."""
         return self.guess_bounds(self.x_points)
 
     @cached_property
     def y_bounds(self) -> NDArray[np.float64]:
-        """y coordinate bounds for each grid cell, with shape (ny, nx, 2)."""
+        """y coordinate bounds for each grid cell, with shape (ny, 2)."""
         return self.guess_bounds(self.y_points)
 
     @cached_property
