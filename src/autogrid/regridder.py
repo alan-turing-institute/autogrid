@@ -126,7 +126,8 @@ class Regridder:
         torch tensors on a GPU, with data[..., iy, ix]. This gives the same
         values as apply(data, method), except that target points outside the
         source grid take the value of the nearest source point at its edge
-        rather than NaN. Use outside_source to mask these if needed.
+        rather than NaN, or an arbitrary source point if it has no nearest
+        source point at all. Use outside_source to mask these if needed.
 
         Args:
             method: "nearest" or "nearest_great_circle", as for apply.
@@ -154,8 +155,18 @@ class Regridder:
             flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
             flat = flat.reshape(self.source.shape)
             result = self._regridder(method)(to_cube(self.source, flat)).data
-            iy, ix = np.unravel_index(
-                np.asarray(result).astype(np.intp), self.source.shape
-            )
+            result = np.ma.filled(np.ma.masked_invalid(result), -1)
+            # Points with no valid index can only be used if outside_source
+            # already masks them, so point them at an arbitrary source point
+            invalid = (result < 0) | (result >= flat.size) | (result != np.rint(result))
+            if np.any(invalid & ~self.outside_source):
+                msg = (
+                    f"Nearest neighbour regridding gave no valid source index for "
+                    f"{np.count_nonzero(invalid & ~self.outside_source)} target "
+                    f"points inside the source grid."
+                )
+                raise RuntimeError(msg)
+            result = np.where(invalid, 0, result).astype(np.intp)
+            iy, ix = np.unravel_index(result, self.source.shape)
             self._nearest_indices[method] = (iy, ix)
         return self._nearest_indices[method]

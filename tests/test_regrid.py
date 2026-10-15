@@ -138,6 +138,46 @@ def test_nearest_indices_rejects_other_methods(
         Regridder(latlon, south).nearest_indices("linear")  # ty: ignore[invalid-argument-type]
 
 
+def _fake_nearest(regridder: Regridder, invalid: np.ndarray, masked: bool) -> None:
+    """Make the cached "nearest" regridder return flat indices with gaps."""
+    real = regridder._regridder("nearest")
+
+    def fake(cube):
+        result = real(cube)
+        data = np.ma.masked_invalid(result.data)
+        if masked:
+            data[invalid] = np.ma.masked
+        else:
+            data = np.where(invalid, np.nan, data)
+        result.data = data
+        return result
+
+    regridder._regridders["nearest"] = fake
+
+
+@pytest.mark.parametrize("masked", [False, True], ids=["nan", "masked"])
+def test_nearest_indices_invalid_outside_source(south: EASE2Grid, masked: bool) -> None:
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
+    regridder = Regridder(regional, south)
+    _fake_nearest(regridder, regridder.outside_source, masked)
+    iy, ix = regridder.nearest_indices("nearest")
+    assert iy.dtype == ix.dtype == np.intp
+    assert iy.min() >= 0 and iy.max() < regional.shape[0]
+    assert ix.min() >= 0 and ix.max() < regional.shape[1]
+
+
+@pytest.mark.parametrize("masked", [False, True], ids=["nan", "masked"])
+def test_nearest_indices_invalid_inside_source_raises(
+    latlon: LatLonGrid, south: EASE2Grid, masked: bool
+) -> None:
+    regridder = Regridder(latlon, south)
+    invalid = np.zeros(south.shape, dtype=bool)
+    invalid[200, 200] = True
+    _fake_nearest(regridder, invalid, masked)
+    with pytest.raises(RuntimeError, match="no valid source index for 1 target"):
+        regridder.nearest_indices("nearest")
+
+
 @pytest.mark.parametrize("method", ["nearest", "nearest_great_circle"])
 def test_nearest_indices_gather_torch_tensors(
     latlon: LatLonGrid, south: EASE2Grid, method: NearestMethod
