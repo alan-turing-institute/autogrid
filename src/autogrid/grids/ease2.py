@@ -11,23 +11,23 @@ Region = Literal["north", "south", "global"]
 # Cell size (m) and (ny, nx) of each full EASE-Grid 2.0 grid, from the NSIDC spec
 # https://nsidc.org/data/user-resources/help-center/guide-ease-grids
 _POLAR = {
-    "36km": (36000.0, (500, 500)),
-    "25km": (25000.0, (720, 720)),
+    "36p0km": (36000.0, (500, 500)),
+    "25p0km": (25000.0, (720, 720)),
     "12p5km": (12500.0, (1440, 1440)),
-    "10km": (9000.0, (1800, 1800)),
-    "9km": (9000.0, (2000, 2000)),
+    "10p0km": (10000.0, (1800, 1800)),
+    "9p0km": (9000.0, (2000, 2000)),
     "6p25km": (6250.0, (2880, 2880)),
     "3p125km": (3125.0, (5760, 5760)),
-    "3km": (3000.0, (6000, 6000)),
-    "1km": (1000.0, (18000, 18000)),
+    "3p0km": (3000.0, (6000, 6000)),
+    "1p0km": (1000.0, (18000, 18000)),
 }
 _GLOBAL = {
-    "36km": (36032.220840584, (406, 964)),
-    "25km": (25025.26000, (584, 1388)),
+    "36p0km": (36032.220840584, (406, 964)),
+    "25p0km": (25025.26000, (584, 1388)),
     "12p5km": (12512.63000, (1168, 2776)),
-    "9km": (9008.055210146, (1624, 3856)),
-    "3km": (3002.690070049, (4872, 11568)),
-    "1km": (1000.895023350, (14616, 34704)),
+    "9p0km": (9008.055210146, (1624, 3856)),
+    "3p0km": (3002.690070049, (4872, 11568)),
+    "1p0km": (1000.895023350, (14616, 34704)),
 }
 SPEC: dict[Region, dict[str, tuple[float, tuple[int, int]]]] = {
     "north": _POLAR,
@@ -64,7 +64,7 @@ class EASE2Grid(Grid):
 
         Args:
             region: "north", "south" or "global".
-            resolution: Nominal resolution, e.g. "25km".
+            resolution: Nominal resolution, e.g. "25p0km".
             shape: Optional (ny, nx) of a subset centred on the projection
                 origin. Each dimension must have the same parity as the full
                 grid so that cells align with the official grid. Defaults to

@@ -20,7 +20,7 @@ def latlon() -> LatLonGrid:
 
 @pytest.fixture(scope="module")
 def south() -> EASE2Grid:
-    return EASE2Grid("south", "25km", shape=(432, 432))
+    return EASE2Grid("south", "25p0km", shape=(432, 432))
 
 
 def analytic(grid: Grid) -> np.ndarray:
@@ -179,7 +179,7 @@ def _haversine(
 
 def test_nearest_great_circle_matches_brute_force() -> None:
     source = LatLonGrid(5.0)
-    target = EASE2Grid("south", "36km", shape=(60, 60))
+    target = EASE2Grid("south", "36p0km", shape=(60, 60))
     # Regrid the flat index of each source point to find the one chosen
     flat = np.arange(source.x.size, dtype=np.float64).reshape(source.shape)
     chosen = Regridder(source, target).apply(flat, "nearest_great_circle")

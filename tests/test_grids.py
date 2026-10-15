@@ -29,12 +29,12 @@ def test_latlon_grid_equals_plain_grid() -> None:
     ("region", "epsg"), [("north", 6931), ("south", 6932), ("global", 6933)]
 )
 def test_ease2_coord_system(region: str, epsg: int) -> None:
-    grid = EASE2Grid(region, "36km")
+    grid = EASE2Grid(region, "36p0km")
     assert grid.crs.to_epsg() == epsg
 
 
-def test_ease2_south_25km() -> None:
-    grid = EASE2Grid("south", "25km")
+def test_ease2_south_25p0km() -> None:
+    grid = EASE2Grid("south", "25p0km")
     assert grid.shape == (720, 720)
     assert isinstance(grid.coord_system, LambertAzimuthalEqualArea)
     # Rows run top to bottom, cell centres half a cell in from the edge
@@ -44,7 +44,7 @@ def test_ease2_south_25km() -> None:
 
 
 def test_ease2_global_extent() -> None:
-    grid = EASE2Grid("global", "36km")
+    grid = EASE2Grid("global", "36p0km")
     assert isinstance(grid.coord_system, EASE2GlobalCS)
     x_min, x_max = grid.crs.x_limits
     assert np.isclose(grid.x_coord.bounds[0, 0], x_min)
@@ -52,8 +52,8 @@ def test_ease2_global_extent() -> None:
 
 
 def test_ease2_subset_aligns_with_full_grid() -> None:
-    full = EASE2Grid("south", "25km")
-    subset = EASE2Grid("south", "25km", shape=(432, 432))
+    full = EASE2Grid("south", "25p0km")
+    subset = EASE2Grid("south", "25p0km", shape=(432, 432))
     offset = (720 - 432) // 2
     np.testing.assert_array_equal(
         subset.x_coord.points, full.x_coord.points[offset : offset + 432]
@@ -63,15 +63,15 @@ def test_ease2_subset_aligns_with_full_grid() -> None:
 @pytest.mark.parametrize("shape", [(431, 431), (800, 800)])
 def test_ease2_rejects_misaligned_subset(shape: tuple[int, int]) -> None:
     with pytest.raises(ValueError, match="centred subset"):
-        EASE2Grid("south", "25km", shape=shape)
+        EASE2Grid("south", "25p0km", shape=shape)
 
 
 @pytest.mark.parametrize(
     "grid",
     [
         LatLonGrid(1.0),
-        EASE2Grid("north", "25km", shape=(432, 432)),
-        EASE2Grid("global", "36km"),
+        EASE2Grid("north", "25p0km", shape=(432, 432)),
+        EASE2Grid("global", "36p0km"),
         Grid(
             np.linspace(-5, 5, 20),
             np.linspace(-5, 5, 30),
@@ -97,7 +97,7 @@ def test_from_latlon_handles_dateline() -> None:
 
 
 def test_from_latlon_rejects_wrong_coord_system() -> None:
-    grid = EASE2Grid("north", "25km", shape=(432, 432))
+    grid = EASE2Grid("north", "25p0km", shape=(432, 432))
     with pytest.raises(ValueError, match="not on a rectilinear grid"):
         Grid.from_latlon(grid.latitudes, grid.longitudes, WGS84)
 
