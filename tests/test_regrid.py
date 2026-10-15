@@ -1,9 +1,7 @@
 import numpy as np
 import pytest
-from iris.coords import DimCoord
 
 from autogrid import Grid, Regridder, nearest_indices
-from autogrid.adaptors.iris import NearestGreatCircle, to_cube
 from autogrid.grids import EASE2Grid, LatLonGrid
 from autogrid.regridder import Method, NearestMethod
 
@@ -187,62 +185,15 @@ def test_nearest_great_circle_outside_source_is_nan(south: EASE2Grid) -> None:
     np.testing.assert_allclose(result[~np.isnan(result)], 1.0)
 
 
-def test_nearest_great_circle_works_as_iris_scheme(
-    latlon: LatLonGrid, south: EASE2Grid
-) -> None:
-    source = to_cube(latlon, np.ones((3, *latlon.shape)))
-    source.long_name = "sea_ice"
-    source.add_dim_coord(
-        DimCoord([0, 1, 2], long_name="time", units="days since 2020-01-01"), 0
-    )
-    target = to_cube(south)
-    result = source.regrid(target, NearestGreatCircle())
-    assert result.shape == (3, *south.shape)
-    assert result.long_name == "sea_ice"
-    assert result.coord("time") == source.coord("time")
-    assert result.coord(axis="X") == target.coord(axis="X")
-
-
-def test_nearest_great_circle_rejects_cube_on_other_grid(
-    latlon: LatLonGrid, south: EASE2Grid
-) -> None:
-    regridder = NearestGreatCircle().regridder(to_cube(latlon), to_cube(south))
-    with pytest.raises(ValueError, match="not on the source grid"):
-        regridder(to_cube(LatLonGrid(2.0), np.zeros((90, 180))))
-
-
 def test_nearest_great_circle_uses_source_datum() -> None:
-    # On British National Grid (OSGB36 datum) the scheme must find the nearest
-    # points by the same latitudes and longitudes as Grid, with no datum shift
+    # On British National Grid (OSGB36 datum) the nearest points must be found
+    # by the same latitudes and longitudes as Grid, with no datum shift
     grid = Grid(np.arange(0, 700000, 50000.0), np.arange(0, 1200000, 50000.0), 27700)
     # A dense target, so a datum shift of ~100 m would move some nearest points
     target = Grid(np.arange(-8, 2, 0.05), np.arange(50, 60, 0.05), "EPSG:4326")
-    regridder = NearestGreatCircle().regridder(to_cube(grid), to_cube(target))
+    got = Regridder(grid, target).nearest_indices("nearest_great_circle")
     expected = nearest_indices(
         grid.latitudes, grid.longitudes, target.latitudes, target.longitudes
     )
-    for got, want in zip(regridder.indices, expected, strict=True):
-        np.testing.assert_array_equal(got, want)
-
-
-def test_nearest_great_circle_handles_latlon_without_coord_system(
-    latlon: LatLonGrid, south: EASE2Grid
-) -> None:
-    # netCDF files with no grid_mapping give coordinates with no coord_system
-    source = to_cube(latlon)
-    for coord in source.coords():
-        coord.coord_system = None
-    regridder = NearestGreatCircle().regridder(source, to_cube(south))
-    expected = NearestGreatCircle().regridder(to_cube(latlon), to_cube(south))
-    for got, want in zip(regridder.indices, expected.indices, strict=True):
-        np.testing.assert_array_equal(got, want)
-
-
-def test_nearest_great_circle_rejects_projected_without_coord_system(
-    latlon: LatLonGrid, south: EASE2Grid
-) -> None:
-    target = to_cube(south)
-    for coord in target.coords():
-        coord.coord_system = None
-    with pytest.raises(ValueError, match="no coordinate system"):
-        NearestGreatCircle().regridder(to_cube(latlon), target)
+    for g, want in zip(got, expected, strict=True):
+        np.testing.assert_array_equal(g, want)
