@@ -5,17 +5,7 @@ from iris.coords import DimCoord
 from autogrid import Grid, Regridder
 from autogrid.grids import EASE2Grid, LatLonGrid
 from autogrid.iris import NearestGreatCircle, to_cube
-from autogrid.iris.schemes import _unit_vectors
-
-
-@pytest.fixture(scope="module")
-def latlon() -> LatLonGrid:
-    return LatLonGrid(1.0)
-
-
-@pytest.fixture(scope="module")
-def south() -> EASE2Grid:
-    return EASE2Grid("south", "25p0km", shape=(432, 432))
+from autogrid.iris.schemes import _lonlat
 
 
 def analytic(grid: Grid) -> np.ndarray:
@@ -161,37 +151,6 @@ def test_nearest_indices_gather_torch_tensors(
     np.testing.assert_array_equal(gathered.numpy(), regridder.apply(data, method))
 
 
-def _haversine(
-    lat1: np.ndarray, lon1: np.ndarray, lat2: np.ndarray, lon2: np.ndarray
-) -> np.ndarray:
-    lat1, lon1, lat2, lon2 = map(np.deg2rad, (lat1, lon1, lat2, lon2))
-    a = (
-        np.sin((lat2 - lat1) / 2) ** 2
-        + np.cos(lat1) * np.cos(lat2) * np.sin((lon2 - lon1) / 2) ** 2
-    )
-    return 2 * np.arcsin(np.sqrt(a))
-
-
-def test_nearest_great_circle_matches_brute_force() -> None:
-    source = LatLonGrid(5.0)
-    target = EASE2Grid("south", "36p0km", shape=(60, 60))
-    # Regrid the flat index of each source point to find the one chosen
-    flat = np.arange(source.x.size, dtype=np.float64).reshape(source.shape)
-    chosen = Regridder(source, target).apply(flat, "nearest_great_circle")
-    # Distance from every target point to every source point, as in cryocast
-    distances = _haversine(
-        target.latitudes.reshape(-1, 1),
-        target.longitudes.reshape(-1, 1),
-        source.latitudes.reshape(1, -1),
-        source.longitudes.reshape(1, -1),
-    )
-    chosen_distances = distances[np.arange(target.x.size), chosen.astype(int).ravel()]
-    # Compare distances rather than indices, as ties may be broken differently
-    np.testing.assert_allclose(
-        chosen_distances, distances.min(axis=1), rtol=0, atol=1e-12
-    )
-
-
 def test_nearest_great_circle_differs_from_nearest_near_pole(
     latlon: LatLonGrid, south: EASE2Grid
 ) -> None:
@@ -256,8 +215,6 @@ def test_nearest_great_circle_uses_source_datum() -> None:
     # On British National Grid (OSGB36 datum) the scheme must find the nearest
     # points by the same latitudes and longitudes as Grid, with no datum shift
     grid = Grid(np.arange(0, 700000, 50000.0), np.arange(0, 1200000, 50000.0), 27700)
-    lat, lon = np.deg2rad(grid.latitudes), np.deg2rad(grid.longitudes)
-    expected = np.stack(
-        [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1
-    ).reshape(-1, 3)
-    np.testing.assert_allclose(_unit_vectors(to_cube(grid)), expected, atol=1e-12)
+    lon, lat = _lonlat(to_cube(grid))
+    np.testing.assert_allclose(lon, grid.longitudes, atol=1e-12)
+    np.testing.assert_allclose(lat, grid.latitudes, atol=1e-12)

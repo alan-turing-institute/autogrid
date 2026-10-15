@@ -5,33 +5,31 @@ from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import NDArray
 from pyproj import Transformer
-from scipy.spatial import cKDTree
+
+from autogrid.nearest import nearest_indices
 
 
 def _horizontal_coords(cube: Cube) -> tuple[DimCoord, DimCoord]:
     """Return the (y, x) dimension coordinates of a cube's last two dimensions."""
-    y = cube.coord(axis="y", dim_coords=True)
-    x = cube.coord(axis="x", dim_coords=True)
+    y = cube.coord(axis="Y", dim_coords=True)
+    x = cube.coord(axis="X", dim_coords=True)
     if cube.coord_dims(y) != (cube.ndim - 2,) or cube.coord_dims(x) != (cube.ndim - 1,):
         msg = "The y and x coordinates must be the last two dimensions of the cube."
+        raise ValueError(msg)
+    if not isinstance(y, DimCoord) or not isinstance(x, DimCoord):
+        msg = "The y and x coordinates must be dimension coordinates."
         raise ValueError(msg)
     return y, x
 
 
-def _unit_vectors(cube: Cube) -> NDArray[np.float64]:
-    """Return the (n, 3) unit sphere position of each horizontal point of a cube."""
+def _lonlat(cube: Cube) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Return the longitude and latitude of each horizontal point of a cube."""
     y, x = _horizontal_coords(cube)
     xx, yy = np.meshgrid(x.points, y.points)
     # Cartopy CRSs are pyproj CRSs. Use the CRS's own datum, with no datum shift,
     # to match Grid.latitudes and Grid.longitudes
     crs = x.coord_system.as_cartopy_crs()
-    lon, lat = Transformer.from_crs(crs, crs.geodetic_crs, always_xy=True).transform(
-        xx, yy
-    )
-    lon, lat = np.deg2rad(lon), np.deg2rad(lat)
-    return np.stack(
-        [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1
-    ).reshape(-1, 3)
+    return Transformer.from_crs(crs, crs.geodetic_crs, always_xy=True).transform(xx, yy)
 
 
 class NearestGreatCircle:
@@ -57,8 +55,8 @@ class NearestGreatCircle:
 class NearestGreatCircleRegridder:
     """Regrid cubes from one horizontal grid to another by NearestGreatCircle.
 
-    The nearest source point to each target point is found once, with a KD-tree,
-    and reused for every cube regridded.
+    The nearest source point to each target point is found once, with
+    autogrid.nearest.nearest_indices, and reused for every cube regridded.
     """
 
     def __init__(self, src_grid: Cube, target_grid: Cube) -> None:
@@ -70,14 +68,10 @@ class NearestGreatCircleRegridder:
         """
         self._src_coords = _horizontal_coords(src_grid)
         self._target_coords = _horizontal_coords(target_grid)
-        # Straight-line distance between points on the unit sphere increases with
-        # great circle distance, so a KD-tree in 3D finds the same nearest point
-        tree = cKDTree(_unit_vectors(src_grid))
-        _, flat_indices = tree.query(_unit_vectors(target_grid), workers=-1)
-        target_shape = tuple(len(c.points) for c in self._target_coords)
-        src_shape = tuple(len(c.points) for c in self._src_coords)
-        self.indices: tuple[NDArray[np.intp], NDArray[np.intp]] = np.unravel_index(
-            flat_indices.reshape(target_shape), src_shape
+        src_lons, src_lats = _lonlat(src_grid)
+        target_lons, target_lats = _lonlat(target_grid)
+        self.indices: tuple[NDArray[np.intp], ...] = nearest_indices(
+            src_lats, src_lons, target_lats, target_lons
         )
 
     def __call__(self, src: Cube) -> Cube:
