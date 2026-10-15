@@ -70,7 +70,11 @@ class Grid:
     @property
     def projection(self) -> ccrs.Projection:
         """The cartopy projection of this grid, e.g. for plotting map axes."""
-        return coord_system(self.crs).as_cartopy_projection()
+        projection = coord_system(self.crs).as_cartopy_projection()
+        if not isinstance(projection, ccrs.Projection):
+            msg = f"CRS {self.crs.to_string()} is not a cartopy projection."
+            raise ValueError(msg)
+        return projection
 
     @property
     def shape(self) -> tuple[int, int]:
