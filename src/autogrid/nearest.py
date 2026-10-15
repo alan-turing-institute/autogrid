@@ -4,36 +4,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import cKDTree
 
-
-def _unit_vectors(
-    latitudes: NDArray[np.float64], longitudes: NDArray[np.float64]
-) -> NDArray[np.float64]:
-    """Return the (n, 3) unit sphere position of each point, flattened."""
-    lat, lon = np.deg2rad(latitudes).ravel(), np.deg2rad(longitudes).ravel()
-    return np.stack(
-        [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1
-    )
-
-
-def _check_points(
-    name: str, latitudes: ArrayLike, longitudes: ArrayLike
-) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Return latitudes and longitudes as float arrays, checking they are valid."""
-    latitudes = np.asarray(latitudes, dtype=np.float64)
-    longitudes = np.asarray(longitudes, dtype=np.float64)
-    if latitudes.shape != longitudes.shape:
-        msg = (
-            f"{name} latitudes and longitudes must have the same shape, but got "
-            f"shapes {latitudes.shape} and {longitudes.shape}."
-        )
-        raise ValueError(msg)
-    if latitudes.size == 0:
-        msg = f"{name} points must not be empty."
-        raise ValueError(msg)
-    if not (np.isfinite(latitudes).all() and np.isfinite(longitudes).all()):
-        msg = f"{name} latitudes and longitudes must all be finite."
-        raise ValueError(msg)
-    return latitudes, longitudes
+from autogrid.sphere import check_points, unit_vectors
 
 
 def nearest_indices(
@@ -69,11 +40,11 @@ def nearest_indices(
         ValueError: If latitudes and longitudes differ in shape, are empty, or
             are not all finite.
     """
-    source_lats, source_lons = _check_points("Source", source_lats, source_lons)
-    target_lats, target_lons = _check_points("Target", target_lats, target_lons)
+    source_lats, source_lons = check_points("Source", source_lats, source_lons)
+    target_lats, target_lons = check_points("Target", target_lats, target_lons)
     # Straight-line distance between points on the unit sphere increases with
     # great circle distance, so a KD-tree in 3D finds the same nearest point
-    tree = cKDTree(_unit_vectors(source_lats, source_lons))
-    _, flat_indices = tree.query(_unit_vectors(target_lats, target_lons), workers=-1)
+    tree = cKDTree(unit_vectors(source_lats, source_lons))
+    _, flat_indices = tree.query(unit_vectors(target_lats, target_lons), workers=-1)
     flat_indices = np.asarray(flat_indices, dtype=np.intp).reshape(target_lats.shape)
     return np.unravel_index(flat_indices, source_lats.shape)
