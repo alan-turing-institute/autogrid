@@ -16,34 +16,38 @@ from autogrid.adaptors.pyproj import prime_meridian_degrees, proj4_dict
 from autogrid.grid import Grid
 
 
-class _CartopyCS(CoordSystem):
-    """An iris coordinate system that delegates to cartopy.
+class _CartopyMixin:
+    """Delegate an iris coordinate system to cartopy, keeping the full CRS.
 
-    Iris only needs a coordinate system to provide a cartopy CRS, so this works
-    for any CRS. Iris cannot save it to netCDF.
+    Iris only needs a coordinate system to provide cartopy CRSs, so this works
+    for any CRS, respecting its prime meridian and datum.
     """
 
-    def __init__(self, crs: CRS) -> None:
-        self.crs = crs
-        self.grid_mapping_name = crs.to_cf().get("grid_mapping_name", "unknown")  # ty: ignore[invalid-attribute-access]
+    crs: CRS
 
-    def as_cartopy_crs(self) -> ccrs.Projection:
-        return cartopy_projection(self.crs)
+    def as_cartopy_crs(self) -> ccrs.CRS:
+        return ccrs.CRS(self.crs)
 
     def as_cartopy_projection(self) -> ccrs.Projection:
-        return self.as_cartopy_crs()
+        return cartopy_projection(self.crs)
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.crs.to_string()!r})"
 
 
-class _CartopyGeogCS(GeogCS):
-    """An iris GeogCS that delegates to cartopy, keeping the full CRS.
+class CartopyCS(_CartopyMixin, CoordSystem):
+    """An iris coordinate system for any CRS. Iris cannot save it to netCDF."""
 
-    A plain GeogCS transforms with only its ellipsoid, which would drop a
-    datum shift. This respects the prime meridian and datum when iris
-    transforms between coordinate systems, while still being a GeogCS so that
-    iris wraps longitudes.
+    def __init__(self, crs: CRS) -> None:
+        self.crs = crs
+        self.grid_mapping_name = crs.to_cf().get("grid_mapping_name", "unknown")  # ty: ignore[invalid-attribute-access]  # pyright: ignore[reportAttributeAccessIssue]
+
+
+class CartopyGeogCS(_CartopyMixin, GeogCS):
+    """An iris GeogCS for latitude-longitude CRSs that an ellipsoid can't describe.
+
+    A plain GeogCS transforms with only its ellipsoid, which would drop the
+    prime meridian or a datum shift. Being a GeogCS lets iris wrap longitudes.
     """
 
     def __init__(self, crs: CRS) -> None:
@@ -54,15 +58,6 @@ class _CartopyGeogCS(GeogCS):
             longitude_of_prime_meridian=prime_meridian_degrees(crs),
         )
         self.crs = crs
-
-    def as_cartopy_crs(self) -> ccrs.CRS:
-        return ccrs.CRS(self.crs)
-
-    def as_cartopy_projection(self) -> ccrs.Projection:
-        return cartopy_projection(self.crs)
-
-    def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.crs.to_string()!r})"
 
 
 @cache
@@ -79,7 +74,7 @@ def coord_system(crs: CRS) -> CoordSystem:
     """
     cf = crs.to_cf()
     if cf.get("grid_mapping_name") != "latitude_longitude":
-        return _CartopyCS(crs)
+        return CartopyCS(crs)
     if any(axis.unit_name != "degree" for axis in crs.axis_info):
         msg = (
             f"Latitude-longitude CRS {crs.name!r} must be in degrees, but has "
@@ -91,7 +86,7 @@ def coord_system(crs: CRS) -> CoordSystem:
         if (datum := proj4_dict(crs).get("datum")) is not None:
             return GeogCS.from_datum(datum)
         return GeogCS(cf["semi_major_axis"], cf["semi_minor_axis"])
-    return _CartopyGeogCS(crs)
+    return CartopyGeogCS(crs)
 
 
 def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:
