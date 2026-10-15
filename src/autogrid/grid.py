@@ -142,8 +142,9 @@ class Grid:
             A plain Grid, whatever class this is called on.
 
         Raises:
-            ValueError: If the arrays are not 2D with matching shapes, or the
-                points are not on a rectilinear grid in the CRS.
+            ValueError: If the arrays are not 2D with matching shapes, have
+                fewer than two rows or columns, or the points are not on a
+                rectilinear grid in the CRS.
         """
         latitudes = np.asarray(latitudes, dtype=np.float64)
         longitudes = np.asarray(longitudes, dtype=np.float64)
@@ -151,6 +152,12 @@ class Grid:
             msg = (
                 "Latitudes and longitudes must be 2D arrays of the same shape, but "
                 f"got shapes {latitudes.shape} and {longitudes.shape}."
+            )
+            raise ValueError(msg)
+        if min(latitudes.shape) < 2:
+            msg = (
+                "At least two rows and two columns of points are needed to recover "
+                f"a grid, but got shape {latitudes.shape}."
             )
             raise ValueError(msg)
         crs = CRS.from_user_input(crs)

@@ -136,6 +136,12 @@ def test_from_latlon_rejects_bad_shapes(lats: np.ndarray, lons: np.ndarray) -> N
         Grid.from_latlon(lats, lons, "EPSG:4326")
 
 
+@pytest.mark.parametrize("shape", [(1, 5), (5, 1), (0, 5)])
+def test_from_latlon_rejects_too_few_points(shape: tuple[int, int]) -> None:
+    with pytest.raises(ValueError, match="At least two rows and two columns"):
+        Grid.from_latlon(np.zeros(shape), np.zeros(shape), "EPSG:4326")
+
+
 @pytest.mark.parametrize("crs", ["EPSG:6931", 6931, CRS.from_epsg(6931)])
 def test_grid_accepts_any_pyproj_crs_input(crs: CRSLike) -> None:
     grid = Grid([-12500.0, 12500.0], [12500.0, -12500.0], crs)
