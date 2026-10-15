@@ -2,7 +2,7 @@
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 
 from autogrid.sphere import check_points, unit_vectors
 
@@ -44,7 +44,7 @@ def nearest_indices(
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
     # Straight-line distance between points on the unit sphere increases with
     # great circle distance, so a KD-tree in 3D finds the same nearest point
-    tree = cKDTree(unit_vectors(source_lats, source_lons))
+    tree = KDTree(unit_vectors(source_lats, source_lons))
     _, flat_indices = tree.query(unit_vectors(target_lats, target_lons), workers=-1)
     flat_indices = np.asarray(flat_indices, dtype=np.intp).reshape(target_lats.shape)
     return np.unravel_index(flat_indices, source_lats.shape)

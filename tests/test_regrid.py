@@ -5,6 +5,7 @@ from iris.coords import DimCoord
 from autogrid import Grid, Regridder, nearest_indices
 from autogrid.adaptors.iris import NearestGreatCircle, to_cube
 from autogrid.grids import EASE2Grid, LatLonGrid
+from autogrid.regridder import Method, NearestMethod
 
 
 def analytic(grid: Grid) -> np.ndarray:
@@ -16,7 +17,7 @@ def analytic(grid: Grid) -> np.ndarray:
     [("linear", 1e-3), ("nearest", 2e-2), ("nearest_great_circle", 2e-2)],
 )
 def test_regrid_matches_analytic_field(
-    latlon: LatLonGrid, south: EASE2Grid, method: str, atol: float
+    latlon: LatLonGrid, south: EASE2Grid, method: Method, atol: float
 ) -> None:
     result = Regridder(latlon, south).apply(analytic(latlon).astype(np.float32), method)
     assert isinstance(result, np.ndarray)
@@ -70,7 +71,7 @@ def test_rejects_wrong_shape(latlon: LatLonGrid, south: EASE2Grid) -> None:
 
 def test_rejects_unknown_method(latlon: LatLonGrid, south: EASE2Grid) -> None:
     with pytest.raises(ValueError, match="Unknown regridding method"):
-        Regridder(latlon, south).apply(np.ones(latlon.shape), "cubic")
+        Regridder(latlon, south).apply(np.ones(latlon.shape), "cubic")  # ty: ignore[invalid-argument-type]
 
 
 def test_regridder_caches_one_regridder_per_method(
@@ -104,7 +105,7 @@ def test_methods_differ_on_same_regridder(latlon: LatLonGrid, south: EASE2Grid) 
     ids=["global", "regional"],
 )
 def test_nearest_indices_match_apply(
-    source: Grid, south: EASE2Grid, method: str
+    source: Grid, south: EASE2Grid, method: NearestMethod
 ) -> None:
     regridder = Regridder(source, south)
     iy, ix = regridder.nearest_indices(method)
@@ -135,12 +136,12 @@ def test_nearest_indices_rejects_other_methods(
     latlon: LatLonGrid, south: EASE2Grid
 ) -> None:
     with pytest.raises(ValueError, match="Unknown nearest neighbour method"):
-        Regridder(latlon, south).nearest_indices("linear")
+        Regridder(latlon, south).nearest_indices("linear")  # ty: ignore[invalid-argument-type]
 
 
 @pytest.mark.parametrize("method", ["nearest", "nearest_great_circle"])
 def test_nearest_indices_gather_torch_tensors(
-    latlon: LatLonGrid, south: EASE2Grid, method: str
+    latlon: LatLonGrid, south: EASE2Grid, method: NearestMethod
 ) -> None:
     torch = pytest.importorskip("torch")
     regridder = Regridder(latlon, south)
@@ -199,7 +200,7 @@ def test_nearest_great_circle_works_as_iris_scheme(
     assert result.shape == (3, *south.shape)
     assert result.long_name == "sea_ice"
     assert result.coord("time") == source.coord("time")
-    assert result.coord(axis="x") == target.coord(axis="x")
+    assert result.coord(axis="X") == target.coord(axis="X")
 
 
 def test_nearest_great_circle_rejects_cube_on_other_grid(

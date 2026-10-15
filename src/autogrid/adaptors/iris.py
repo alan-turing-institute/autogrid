@@ -25,7 +25,7 @@ class _CartopyCS(CoordSystem):
 
     def __init__(self, crs: CRS) -> None:
         self.crs = crs
-        self.grid_mapping_name = crs.to_cf().get("grid_mapping_name", "unknown")
+        self.grid_mapping_name = crs.to_cf().get("grid_mapping_name", "unknown")  # ty: ignore[invalid-attribute-access]
 
     def as_cartopy_crs(self) -> ccrs.Projection:
         return cartopy_projection(self.crs)

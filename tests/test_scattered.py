@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -136,8 +138,8 @@ def test_keeps_source_and_target_shapes(target: EASE2Grid) -> None:
     ],
     ids=["values-shape", "source-shape", "target-nan", "scale", "min-weight"],
 )
-def test_rejects_invalid_arguments(kwargs: dict, match: str) -> None:
-    args = {
+def test_rejects_invalid_arguments(kwargs: dict[str, Any], match: str) -> None:
+    args: dict[str, Any] = {
         "source_lats": [0.0],
         "source_lons": [0.0],
         "values": [1.0],

@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import csr_array
-from scipy.spatial import cKDTree
+from scipy.spatial import KDTree
 
 from autogrid.grid import Grid
 from autogrid.sphere import check_points, chord_to_km, km_to_chord, unit_vectors
@@ -124,8 +124,8 @@ def points_to_points(
 
     if max_distance_km is not None:
         # Only pairs within the cutoff, with i indexing targets and j sources
-        pairs = cKDTree(target_xyz).sparse_distance_matrix(
-            cKDTree(source_xyz), km_to_chord(max_distance_km), output_type="ndarray"
+        pairs = KDTree(target_xyz).sparse_distance_matrix(
+            KDTree(source_xyz), km_to_chord(max_distance_km), output_type="ndarray"
         )
         weights = csr_array(
             (gaussian(pairs["v"]), (pairs["i"], pairs["j"])),

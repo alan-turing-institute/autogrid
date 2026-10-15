@@ -4,7 +4,9 @@ import pytest
 from pyproj import CRS
 
 from autogrid import Grid
+from autogrid.grid import CRSLike
 from autogrid.grids import EASE2Grid, LatLonGrid
+from autogrid.grids.ease2 import Region
 
 
 def test_latlon_grid() -> None:
@@ -29,7 +31,7 @@ def test_latlon_grid_equals_plain_grid() -> None:
 @pytest.mark.parametrize(
     ("region", "epsg"), [("north", 6931), ("south", 6932), ("global", 6933)]
 )
-def test_ease2_crs(region: str, epsg: int) -> None:
+def test_ease2_crs(region: Region, epsg: int) -> None:
     grid = EASE2Grid(region, "36p0km")
     assert grid.crs.to_epsg() == epsg
 
@@ -118,7 +120,7 @@ def test_from_latlon_rejects_bad_shapes(lats: np.ndarray, lons: np.ndarray) -> N
 
 
 @pytest.mark.parametrize("crs", ["EPSG:6931", 6931, CRS.from_epsg(6931)])
-def test_grid_accepts_any_pyproj_crs_input(crs: object) -> None:
+def test_grid_accepts_any_pyproj_crs_input(crs: CRSLike) -> None:
     grid = Grid([-12500.0, 12500.0], [12500.0, -12500.0], crs)
     assert grid == EASE2Grid("north", "25p0km", shape=(2, 2))
 
@@ -140,7 +142,7 @@ def test_grids_with_different_crs_are_not_equal() -> None:
 
 
 @pytest.mark.parametrize("region", ["north", "south", "global"])
-def test_ease2_projection_has_plot_limits(region: str) -> None:
+def test_ease2_projection_has_plot_limits(region: Region) -> None:
     x_min, x_max = EASE2Grid(region, "36p0km").projection.x_limits
     assert x_max - x_min > 1e7
 
