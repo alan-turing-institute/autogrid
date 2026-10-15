@@ -68,7 +68,8 @@ def points_to_points(
         source_lats: Latitude of each observation in degrees, of any shape.
         source_lons: Longitude of each observation in degrees, of the same shape.
         values: Observed values, whose trailing dimensions match the source
-            shape, e.g. (n_variables, n_obs). NaN observations are ignored.
+            shape, e.g. (n_variables, n_obs). NaN or masked observations are
+            ignored.
         target_lats: Latitude of each target point in degrees, of any shape,
             e.g. Grid.latitudes.
         target_lons: Longitude of each target point in degrees, of the same shape.
@@ -90,7 +91,7 @@ def points_to_points(
     """
     source_lats, source_lons = check_points("Source", source_lats, source_lons)
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
-    values = np.asarray(values)
+    values = np.ma.masked_invalid(values)
     source_shape = source_lats.shape
     if values.shape[values.ndim - len(source_shape) :] != source_shape:
         msg = (
@@ -110,10 +111,10 @@ def points_to_points(
 
     leading_shape = values.shape[: values.ndim - len(source_shape)]
     flat_values = values.reshape(-1, source_lats.size).astype(np.float64)
-    # Drop NaN observations from both the weighted sum and the sum of weights
-    valid = np.isfinite(flat_values)
-    filled = np.where(valid, flat_values, 0.0)
-    valid = valid.astype(np.float64)
+    # Drop NaN or masked observations from both the weighted sum and the sum of
+    # weights
+    valid = (~np.ma.getmaskarray(flat_values)).astype(np.float64)
+    filled = np.ma.filled(flat_values, 0.0)
 
     source_xyz = unit_vectors(source_lats, source_lons)
     target_xyz = unit_vectors(target_lats, target_lons)

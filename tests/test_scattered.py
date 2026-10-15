@@ -116,6 +116,14 @@ def test_ignores_nan_observations_per_slice() -> None:
     assert np.isnan(result[2]).all()
 
 
+def test_ignores_masked_observations() -> None:
+    lat, lon = np.array([0.0, 0.0]), np.array([0.0, 1.0])
+    values = np.ma.masked_array([1.0, 100.0], mask=[False, True])
+    result = points_to_points(lat, lon, values, lat[:1], lon[:1], 50.0)
+    np.testing.assert_allclose(result, [1.0])
+    assert not np.ma.isMaskedArray(result)
+
+
 def test_keeps_source_and_target_shapes(target: EASE2Grid) -> None:
     lat, lon = np.meshgrid(np.linspace(-80, -60, 4), np.linspace(-180, 180, 5))
     values = np.ones((2, *lat.shape), dtype=np.float32)
