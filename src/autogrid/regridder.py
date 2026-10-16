@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from functools import cached_property
-from typing import Literal, get_args
+from typing import Literal
 
 import numpy as np
 from iris.analysis import AreaWeighted, Linear, Nearest
@@ -16,8 +16,7 @@ from autogrid.adaptors.iris import to_cube
 from autogrid.adaptors.pyproj import full_turn
 from autogrid.grid import Grid
 
-NearestMethod = Literal["nearest", "nearest_great_circle"]
-Method = Literal["linear", "area_weighted"] | NearestMethod
+Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
 
 
 class Regridder:
@@ -38,9 +37,6 @@ class Regridder:
         self.source = source
         self.target = target
         self._regridders: dict[Method, Callable[[Cube], Cube]] = {}
-        self._nearest_indices: dict[
-            NearestMethod, tuple[NDArray[np.intp], NDArray[np.intp]]
-        ] = {}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.source!r} -> {self.target!r})"
@@ -49,6 +45,13 @@ class Regridder:
     def _source_coords(self) -> tuple[DimCoord, ...]:
         """Iris (y, x) coordinates of the source grid, shared by every source cube."""
         return to_cube(self.source).dim_coords
+
+    @cached_property
+    def _great_circle_indices(self) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
+        """Source (iy, ix) of the nearest source point to each target point."""
+        # Search the Grids themselves, rather than rebuilding Grids from iris
+        # cubes, which can lose CRS detail
+        return nearest.indices_grid_to_grid(self.source, self.target)
 
     @cached_property
     def outside_source(self) -> NDArray[np.bool_]:
@@ -116,7 +119,7 @@ class Regridder:
             )
             raise ValueError(msg)
         if method == "nearest_great_circle":
-            iy, ix = self.nearest_indices(method)
+            iy, ix = self._great_circle_indices
             result = data[..., iy, ix]
         else:
             result = self._regridder(method)(
@@ -125,59 +128,3 @@ class Regridder:
         result = np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
         result[..., self.outside_source] = np.nan
         return result
-
-    def nearest_indices(
-        self, method: NearestMethod = "nearest"
-    ) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
-        """Source grid indices of the nearest source point to each target point.
-
-        Use these to apply nearest neighbour regridding externally, e.g. to
-        torch tensors on a GPU, with data[..., iy, ix]. This gives the same
-        values as apply(data, method), except that target points outside the
-        source grid take the value of the nearest source point at its edge
-        rather than NaN, or an arbitrary source point if it has no nearest
-        source point at all.
-
-        Args:
-            method: "nearest" or "nearest_great_circle", as for apply.
-
-        Returns:
-            Tuple of (iy, ix) integer arrays with the target grid shape (ny, nx),
-            giving the row and column of the nearest source point.
-        """
-        if method not in get_args(NearestMethod):
-            msg = f"Unknown nearest neighbour method {method!r}."
-            raise ValueError(msg)
-        if method == "nearest_great_circle" and method not in self._nearest_indices:
-            # Search the Grids' own latitudes and longitudes, rather than
-            # rebuilding Grids from iris cubes, which can lose CRS detail
-            iy, ix = nearest.nearest_indices(
-                self.source.latitudes,
-                self.source.longitudes,
-                self.target.latitudes,
-                self.target.longitudes,
-            )
-            self._nearest_indices[method] = (iy, ix)
-        if method not in self._nearest_indices:
-            # Regrid the flat index of each source point, which nearest neighbour
-            # regridding copies exactly into each target point
-            flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
-            flat = flat.reshape(self.source.shape)
-            result = self._regridder(method)(
-                to_cube(self.source, flat, self._source_coords)
-            ).data
-            result = np.ma.filled(np.ma.masked_invalid(result), -1)
-            # Points with no valid index can only be used if outside_source
-            # already masks them, so point them at an arbitrary source point
-            invalid = (result < 0) | (result >= flat.size) | (result != np.rint(result))
-            if np.any(invalid & ~self.outside_source):
-                msg = (
-                    f"Nearest neighbour regridding gave no valid source index for "
-                    f"{np.count_nonzero(invalid & ~self.outside_source)} target "
-                    f"points inside the source grid."
-                )
-                raise RuntimeError(msg)
-            result = np.where(invalid, 0, result).astype(np.intp)
-            iy, ix = np.unravel_index(result, self.source.shape)
-            self._nearest_indices[method] = (iy, ix)
-        return self._nearest_indices[method]

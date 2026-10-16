@@ -129,12 +129,31 @@ class Grid:
         """y coordinate bounds for each grid cell, with shape (ny, 2)."""
         return self.guess_bounds(self.y_points)
 
+    def latlon_rows(
+        self, rows: slice
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Latitude and longitude of the points in a block of rows.
+
+        Unlike latitudes and longitudes, these are not cached, so a large grid
+        can be processed a block at a time.
+
+        Args:
+            rows: Slice of the rows of the grid.
+
+        Returns:
+            Tuple of (latitude, longitude) arrays in degrees, with the shape of
+            the block of rows.
+        """
+        lon, lat = Transformer.from_crs(
+            self.crs, latlon_crs(self.crs), always_xy=True
+        ).transform(self.x[rows], self.y[rows])
+        return lat, lon
+
     @cached_property
     def _lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Return the longitude and latitude of each grid point, with shape (ny, nx)."""
-        return Transformer.from_crs(
-            self.crs, latlon_crs(self.crs), always_xy=True
-        ).transform(self.x, self.y)
+        lat, lon = self.latlon_rows(slice(None))
+        return lon, lat
 
     @classmethod
     def from_latlon(

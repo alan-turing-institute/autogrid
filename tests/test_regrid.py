@@ -2,10 +2,11 @@ import numpy as np
 import pytest
 from pyproj import Transformer
 
+import autogrid.nearest
 from autogrid import Grid, Regridder
 from autogrid.grids import build_global_latlon
-from autogrid.nearest import nearest_indices
-from autogrid.regridder import Method, NearestMethod
+from autogrid.nearest import indices_grid_to_grid, indices_points_to_points
+from autogrid.regridder import Method
 
 
 def analytic(grid: Grid) -> np.ndarray:
@@ -91,7 +92,6 @@ def test_methods_differ_on_same_regridder(latlon: Grid, south: Grid) -> None:
     )
 
 
-@pytest.mark.parametrize("method", ["nearest", "nearest_great_circle"])
 @pytest.mark.parametrize(
     "source",
     [
@@ -100,87 +100,35 @@ def test_methods_differ_on_same_regridder(latlon: Grid, south: Grid) -> None:
     ],
     ids=["global", "regional"],
 )
-def test_nearest_indices_match_apply(
-    source: Grid, south: Grid, method: NearestMethod
+def test_nearest_great_circle_matches_grid_to_grid_indices(
+    source: Grid, south: Grid
 ) -> None:
+    # The indices from nearest can gather data externally, e.g. torch tensors
     regridder = Regridder(source, south)
-    iy, ix = regridder.nearest_indices(method)
-    assert iy.shape == ix.shape == south.shape
-    assert iy.dtype == ix.dtype == np.intp
-    assert iy.min() >= 0 and iy.max() < source.shape[0]
-    assert ix.min() >= 0 and ix.max() < source.shape[1]
+    iy, ix = indices_grid_to_grid(source, south)
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
-    expected = regridder.apply(data, method)
+    expected = regridder.apply(data, "nearest_great_circle")
     inside = ~regridder.outside_source
     np.testing.assert_array_equal(gathered[..., inside], expected[..., inside])
     assert np.isnan(expected[..., ~inside]).all()
 
 
-def test_nearest_indices_are_cached_per_method(latlon: Grid, south: Grid) -> None:
-    regridder = Regridder(latlon, south)
-    nearest = regridder.nearest_indices("nearest")
-    great_circle = regridder.nearest_indices("nearest_great_circle")
-    assert regridder.nearest_indices("nearest") is nearest
-    assert regridder.nearest_indices("nearest_great_circle") is great_circle
-    assert not all(np.array_equal(a, b) for a, b in zip(nearest, great_circle))
-
-
-def test_nearest_indices_rejects_other_methods(latlon: Grid, south: Grid) -> None:
-    with pytest.raises(ValueError, match="Unknown nearest neighbour method"):
-        Regridder(latlon, south).nearest_indices("linear")  # ty: ignore[invalid-argument-type]
-
-
-def _fake_nearest(regridder: Regridder, invalid: np.ndarray, masked: bool) -> None:
-    """Make the cached "nearest" regridder return flat indices with gaps."""
-    real = regridder._regridder("nearest")
-
-    def fake(cube):
-        result = real(cube)
-        data = np.ma.masked_invalid(result.data)
-        if masked:
-            data[invalid] = np.ma.masked
-        else:
-            data = np.where(invalid, np.nan, data)
-        result.data = data
-        return result
-
-    regridder._regridders["nearest"] = fake
-
-
-@pytest.mark.parametrize("masked", [False, True], ids=["nan", "masked"])
-def test_nearest_indices_invalid_outside_source(south: Grid, masked: bool) -> None:
-    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
-    regridder = Regridder(regional, south)
-    _fake_nearest(regridder, regridder.outside_source, masked)
-    iy, ix = regridder.nearest_indices("nearest")
-    assert iy.dtype == ix.dtype == np.intp
-    assert iy.min() >= 0 and iy.max() < regional.shape[0]
-    assert ix.min() >= 0 and ix.max() < regional.shape[1]
-
-
-@pytest.mark.parametrize("masked", [False, True], ids=["nan", "masked"])
-def test_nearest_indices_invalid_inside_source_raises(
-    latlon: Grid, south: Grid, masked: bool
+def test_nearest_great_circle_indices_are_cached(
+    latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    calls = []
+    real = autogrid.nearest.indices_grid_to_grid
+    monkeypatch.setattr(
+        autogrid.nearest,
+        "indices_grid_to_grid",
+        lambda *args: calls.append(args) or real(*args),
+    )
     regridder = Regridder(latlon, south)
-    invalid = np.zeros(south.shape, dtype=bool)
-    invalid[200, 200] = True
-    _fake_nearest(regridder, invalid, masked)
-    with pytest.raises(RuntimeError, match="no valid source index for 1 target"):
-        regridder.nearest_indices("nearest")
-
-
-@pytest.mark.parametrize("method", ["nearest", "nearest_great_circle"])
-def test_nearest_indices_gather_torch_tensors(
-    latlon: Grid, south: Grid, method: NearestMethod
-) -> None:
-    torch = pytest.importorskip("torch")
-    regridder = Regridder(latlon, south)
-    iy, ix = (torch.from_numpy(i) for i in regridder.nearest_indices(method))
-    data = np.random.default_rng(0).random((2, 4, *latlon.shape)).astype(np.float32)
-    gathered = torch.from_numpy(data)[:, :, iy, ix]
-    np.testing.assert_array_equal(gathered.numpy(), regridder.apply(data, method))
+    data = np.random.default_rng(0).random(latlon.shape)
+    first = regridder.apply(data, "nearest_great_circle")
+    np.testing.assert_array_equal(regridder.apply(data, "nearest_great_circle"), first)
+    assert len(calls) == 1
 
 
 def test_nearest_great_circle_differs_from_nearest_near_pole(
@@ -225,8 +173,8 @@ def test_nearest_great_circle_uses_source_datum() -> None:
     grid = Grid(np.arange(0, 700000, 50000.0), np.arange(0, 1200000, 50000.0), 27700)
     # A dense target, so a datum shift of ~100 m would move some nearest points
     target = Grid(np.arange(-8, 2, 0.05), np.arange(50, 60, 0.05), "EPSG:4326")
-    got = Regridder(grid, target).nearest_indices("nearest_great_circle")
-    expected = nearest_indices(
+    got = indices_grid_to_grid(grid, target)
+    expected = indices_points_to_points(
         grid.latitudes, grid.longitudes, target.latitudes, target.longitudes
     )
     for g, want in zip(got, expected, strict=True):
