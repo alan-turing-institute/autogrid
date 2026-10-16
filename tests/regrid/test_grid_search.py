@@ -76,6 +76,14 @@ def test_grid_to_points_keeps_target_shape(latlon: Grid) -> None:
     np.testing.assert_array_equal(ix, [[359, 179]])
 
 
+def test_grid_to_points_handles_tiny_source() -> None:
+    # Too few points for a quarter-grid step from targets outside it
+    source = Grid([0, 1, 2], [0, 1], 4326)
+    iy, ix = grid_to_points(source, [0.2, 0.9], [10.0, -5.0])
+    np.testing.assert_array_equal(iy, [0, 1])
+    np.testing.assert_array_equal(ix, [2, 0])
+
+
 def test_grid_to_points_rejects_invalid_targets(latlon: Grid) -> None:
     with pytest.raises(ValueError, match="Target .* must all be finite"):
         grid_to_points(latlon, [0.0], [np.nan])

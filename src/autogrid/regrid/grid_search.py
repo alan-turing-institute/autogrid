@@ -66,7 +66,7 @@ def grid_to_points(
     # Search in steps of a quarter of the grid from points outside it, as they
     # can start far from their nearest point
     inside = source.contains(x, y)
-    step = np.where(inside, 1, max(1, 1 << (max(ny, nx).bit_length() - 3)))
+    step = np.where(inside, 1, 1 << max(0, max(ny, nx).bit_length() - 3))
 
     targets = unit_vectors(lats, lons)
 
