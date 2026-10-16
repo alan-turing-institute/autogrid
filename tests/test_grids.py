@@ -170,6 +170,13 @@ def test_from_latlon_handles_dateline() -> None:
     np.testing.assert_allclose(grid.x_points, np.arange(170.5, 190, 1.0))
 
 
+def test_from_latlon_handles_rows_starting_on_different_branches() -> None:
+    lon, lat = np.meshgrid(np.arange(180, 190, 1.0), np.arange(-2.5, 3, 1.0))
+    lon[1::2, 0] = -180  # Some rows start at 180 and others at -180
+    grid = Grid.from_latlon(lat, lon, "EPSG:4326")
+    np.testing.assert_allclose(grid.x_points, np.arange(180, 190, 1.0))
+
+
 def test_from_latlon_rejects_wrong_crs() -> None:
     grid = build_ease2("north", "25p0km", shape=(432, 432))
     with pytest.raises(ValueError, match="not on a rectilinear grid"):

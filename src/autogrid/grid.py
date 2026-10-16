@@ -179,7 +179,9 @@ class Grid:
             longitudes, latitudes
         )
         if crs.is_geographic:
-            # Keep longitudes monotonic across the dateline, e.g. 179.5, -179.5
+            # Start every row on the same branch as the first, e.g. 180 and -180,
+            # then keep longitudes monotonic across the dateline, e.g. 179.5, -179.5
+            x[:, 0] -= 360 * np.round((x[:, 0] - x[0, 0]) / 360)
             x = np.unwrap(x, period=360, axis=1)
         x_points, y_points = x.mean(axis=0), y.mean(axis=1)
         spacing = min(np.abs(np.diff(x_points)).min(), np.abs(np.diff(y_points)).min())
