@@ -1,7 +1,7 @@
 import cartopy.crs as ccrs
 import numpy as np
 import pytest
-from pyproj import CRS
+from pyproj import CRS, Transformer
 
 from autogrid import Grid
 from autogrid.grids import build_ease2
@@ -48,6 +48,18 @@ def test_projection_keeps_datum() -> None:
     assert not isinstance(projection, ccrs.PlateCarree)
     lon, _ = ccrs.CRS("EPSG:4326").transform_point(-2.0, 52.0, projection)
     assert abs(lon + 2.0) > 1e-3
+
+
+def test_projection_keeps_named_datum() -> None:
+    # NAD27 is named by PROJ.4 as +datum=NAD27, and is offset from WGS 84 by
+    # about 35 m here, which a Globe of its ellipsoid alone would drop
+    want = Transformer.from_crs("EPSG:4267", "EPSG:4326", always_xy=True).transform(
+        -100.0, 40.0
+    )
+    assert abs(want[0] + 100.0) > 1e-4
+    projection = Grid([0.0, 1.0], [40.0, 41.0], "EPSG:4267").projection
+    got = ccrs.CRS("EPSG:4326").transform_point(-100.0, 40.0, projection)
+    np.testing.assert_allclose(got, want, rtol=0, atol=1e-6)
 
 
 @pytest.mark.parametrize(
