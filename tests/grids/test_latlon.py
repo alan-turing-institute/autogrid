@@ -18,7 +18,7 @@ def test_latlon_grid_rejects_uneven_resolution() -> None:
         build_global_latlon(0.7)
 
 
-@pytest.mark.parametrize("resolution", [0, -1.0, -180, 360, np.inf, np.nan])
+@pytest.mark.parametrize("resolution", [0, -1.0, -180, 180, 360, np.inf, np.nan])
 def test_latlon_grid_rejects_out_of_range_resolution(resolution: float) -> None:
     with pytest.raises(ValueError, match="must be in"):
         build_global_latlon(resolution)

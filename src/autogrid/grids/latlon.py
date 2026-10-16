@@ -13,11 +13,11 @@ def build_global_latlon(resolution: float) -> Grid:
         resolution: Cell size in degrees. Must divide 180 exactly.
 
     Raises:
-        ValueError: If the resolution is not in (0, 180] degrees, or does
+        ValueError: If the resolution is not in (0, 180) degrees, or does
             not divide 180 degrees exactly.
     """
-    if not 0 < resolution <= 180:
-        msg = f"Resolution {resolution} must be in (0, 180] degrees."
+    if not 0 < resolution < 180:
+        msg = f"Resolution {resolution} must be in (0, 180) degrees."
         raise ValueError(msg)
     if not np.isclose(180 / resolution, round(180 / resolution)):
         msg = f"Resolution {resolution} does not divide 180 degrees exactly."
