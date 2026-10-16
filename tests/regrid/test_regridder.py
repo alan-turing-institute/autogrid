@@ -2,10 +2,11 @@ import numpy as np
 import pytest
 from pyproj import Transformer
 
-import autogrid.regrid.nearest
+import autogrid.regrid.grid_search
 from autogrid import Grid, Regridder
 from autogrid.grids import build_global_latlon
-from autogrid.regrid.nearest import indices_grid_to_grid, indices_points_to_points
+from autogrid.regrid.grid_search import grid_to_grid
+from autogrid.regrid.points import nearest_indices
 from autogrid.regrid.regridder import Method
 
 
@@ -103,9 +104,9 @@ def test_methods_differ_on_same_regridder(latlon: Grid, south: Grid) -> None:
 def test_nearest_great_circle_matches_grid_to_grid_indices(
     source: Grid, south: Grid
 ) -> None:
-    # The indices from nearest can gather data externally, e.g. torch tensors
+    # The indices from grid_to_grid can gather data externally, e.g. torch tensors
     regridder = Regridder(source, south)
-    iy, ix = indices_grid_to_grid(source, south)
+    iy, ix = grid_to_grid(source, south)
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
     expected = regridder.apply(data, "nearest_great_circle")
@@ -118,10 +119,10 @@ def test_nearest_great_circle_indices_are_cached(
     latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = []
-    real = autogrid.regrid.nearest.indices_grid_to_grid
+    real = autogrid.regrid.grid_search.grid_to_grid
     monkeypatch.setattr(
-        autogrid.regrid.nearest,
-        "indices_grid_to_grid",
+        autogrid.regrid.grid_search,
+        "grid_to_grid",
         lambda *args: calls.append(args) or real(*args),
     )
     regridder = Regridder(latlon, south)
@@ -173,8 +174,8 @@ def test_nearest_great_circle_uses_source_datum() -> None:
     grid = Grid(np.arange(0, 700000, 50000.0), np.arange(0, 1200000, 50000.0), 27700)
     # A dense target, so a datum shift of ~100 m would move some nearest points
     target = Grid(np.arange(-8, 2, 0.05), np.arange(50, 60, 0.05), "EPSG:4326")
-    got = indices_grid_to_grid(grid, target)
-    expected = indices_points_to_points(
+    got = grid_to_grid(grid, target)
+    expected = nearest_indices(
         grid.latitudes, grid.longitudes, target.latitudes, target.longitudes
     )
     for g, want in zip(got, expected, strict=True):

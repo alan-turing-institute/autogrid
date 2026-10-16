@@ -1,15 +1,18 @@
-"""Nearest neighbour search by great circle distance, from latitudes and longitudes."""
+"""Nearest neighbour search by great circle distance, on the points of a Grid.
+
+This walks the source grid from a first guess in its own CRS, rather than
+building a KD-tree over all of its points as points.nearest_indices does.
+"""
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from scipy.spatial import KDTree
 
 from autogrid.grids import Grid
 from autogrid.grids.axes import normalise_longitude
-from autogrid.sphere import check_points, unit_vectors
+from autogrid.regrid.sphere import check_points, unit_vectors
 
 # Largest number of target points whose latitudes and longitudes are held at
-# once by nearest_grid_to_grid_indices
+# once by grid_to_grid
 _BLOCK_POINTS = 2**22
 
 # Offsets of the eight neighbours of a grid cell, as (row, column)
@@ -18,60 +21,16 @@ _NEIGHBOURS = np.array(
 )
 
 
-def indices_points_to_points(
-    source_lats: ArrayLike,
-    source_lons: ArrayLike,
-    target_lats: ArrayLike,
-    target_lons: ArrayLike,
-) -> tuple[NDArray[np.intp], ...]:
-    """Source indices of the nearest source point to each target point.
-
-    Points are compared by great circle distance on a sphere, so only their
-    latitudes and longitudes are needed: no CRS, and no rectilinear structure.
-    This suits flat point lists, such as an anemoi dataset's latitudes and
-    longitudes, and curvilinear grids. It gives the same nearest points as the
-    "nearest_great_circle" method of Regridder.
-
-    Every target point takes its nearest source point, however far away, so
-    nothing is masked outside the source domain.
-
-    Args:
-        source_lats: Latitude of each source point in degrees, of any shape.
-        source_lons: Longitude of each source point in degrees, of the same shape.
-        target_lats: Latitude of each target point in degrees, of any shape.
-        target_lons: Longitude of each target point in degrees, of the same shape.
-
-    Returns:
-        Tuple with one integer array per source dimension, each with the target
-        shape, indexing the nearest source point. Gather data whose trailing
-        dimensions match the source shape with data[(..., *indices)]. For a
-        1D source this is a 1-tuple, e.g. data[..., indices[0]].
-
-    Raises:
-        ValueError: If latitudes and longitudes differ in shape, are empty, or
-            are not all finite.
-    """
-    source_lats, source_lons = check_points("Source", source_lats, source_lons)
-    target_lats, target_lons = check_points("Target", target_lats, target_lons)
-    # Straight-line distance between points on the unit sphere increases with
-    # great circle distance, so a KD-tree in 3D finds the same nearest point
-    tree = KDTree(unit_vectors(source_lats, source_lons))
-    _, flat_indices = tree.query(unit_vectors(target_lats, target_lons), workers=-1)
-    flat_indices = np.asarray(flat_indices, dtype=np.intp).reshape(target_lats.shape)
-    return np.unravel_index(flat_indices, source_lats.shape)
-
-
-def indices_grid_to_points(
+def grid_to_points(
     source: Grid, target_lats: ArrayLike, target_lons: ArrayLike
 ) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
     """Source grid indices of the nearest source point to each target point.
 
-    This finds the same nearest points, by great circle distance, as
-    indices_points_to_points(source.latitudes, source.longitudes, ...), but
-    uses the structure of the source grid rather than a KD-tree over all of
-    its points.
-    It needs memory in proportion to the number of target points only, so
-    suits very large source grids, such as the 1 km EASE-Grid 2.0 grids.
+    This finds the same nearest points as points.nearest_indices(
+    source.latitudes, source.longitudes, ...), but uses the structure of the
+    source grid rather than a KD-tree over all of its points. It needs memory
+    in proportion to the number of target points only, so suits very large
+    source grids, such as the 1 km EASE-Grid 2.0 grids.
 
     Each target point starts from the source point nearest to it in the source
     CRS, then moves to whichever of its eight neighbours is nearer by great
@@ -141,14 +100,15 @@ def indices_grid_to_points(
     return iy.reshape(target_lats.shape), ix.reshape(target_lats.shape)
 
 
-def indices_grid_to_grid(
+def grid_to_grid(
     source: Grid, target: Grid
 ) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
     """Source grid indices of the nearest source point to each target grid point.
 
-    As nearest_grid_indices, for the latitudes and longitudes of the target
-    grid. These are found a block of rows at a time, so that neither grid
-    holds the latitudes and longitudes of all of its points.
+    As grid_to_points, for the latitudes and longitudes of the target grid.
+    These are found a block of rows at a time, so that neither grid holds the
+    latitudes and longitudes of all of its points at once. Regridder uses this
+    for its "nearest_great_circle" method.
 
     Args:
         source: Grid of the source points.
@@ -163,9 +123,7 @@ def indices_grid_to_grid(
     rows = max(1, _BLOCK_POINTS // target.shape[1])
     for start in range(0, target.shape[0], rows):
         block = slice(start, start + rows)
-        iy[block], ix[block] = indices_grid_to_points(
-            source, *target.latlon_slice(block)
-        )
+        iy[block], ix[block] = grid_to_points(source, *target.latlon_slice(block))
     return iy, ix
 
 

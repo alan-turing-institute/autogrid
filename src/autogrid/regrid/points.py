@@ -1,17 +1,64 @@
-"""Grid scattered point observations, weighting them by great circle distance."""
+"""Nearest neighbours and weighted means of points, by great circle distance.
+
+These need only the latitudes and longitudes of the points: no CRS, and no
+rectilinear structure.
+"""
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import csr_array
 from scipy.spatial import KDTree
 
-from autogrid.sphere import check_points, chord_to_km, km_to_chord, unit_vectors
+from autogrid.regrid.sphere import check_points, chord_to_km, km_to_chord, unit_vectors
 
-# Largest number of (target, source) weights held in memory at once
+# Largest number of (target, source) weights held in memory at once by
+# gaussian_mean
 _CHUNK_ELEMENTS = 2**24
 
 
-def points_to_points(
+def nearest_indices(
+    source_lats: ArrayLike,
+    source_lons: ArrayLike,
+    target_lats: ArrayLike,
+    target_lons: ArrayLike,
+) -> tuple[NDArray[np.intp], ...]:
+    """Source indices of the nearest source point to each target point.
+
+    This suits flat point lists, such as an anemoi dataset's latitudes and
+    longitudes, and curvilinear grids. It gives the same nearest points as the
+    "nearest_great_circle" method of Regridder. For a very large source Grid,
+    grid_search.grid_to_points finds them without a KD-tree over every point.
+
+    Every target point takes its nearest source point, however far away, so
+    nothing is masked outside the source domain.
+
+    Args:
+        source_lats: Latitude of each source point in degrees, of any shape.
+        source_lons: Longitude of each source point in degrees, of the same shape.
+        target_lats: Latitude of each target point in degrees, of any shape.
+        target_lons: Longitude of each target point in degrees, of the same shape.
+
+    Returns:
+        Tuple with one integer array per source dimension, each with the target
+        shape, indexing the nearest source point. Gather data whose trailing
+        dimensions match the source shape with data[(..., *indices)]. For a
+        1D source this is a 1-tuple, e.g. data[..., indices[0]].
+
+    Raises:
+        ValueError: If latitudes and longitudes differ in shape, are empty, or
+            are not all finite.
+    """
+    source_lats, source_lons = check_points("Source", source_lats, source_lons)
+    target_lats, target_lons = check_points("Target", target_lats, target_lons)
+    # Straight-line distance between points on the unit sphere increases with
+    # great circle distance, so a KD-tree in 3D finds the same nearest point
+    tree = KDTree(unit_vectors(source_lats, source_lons))
+    _, flat_indices = tree.query(unit_vectors(target_lats, target_lons), workers=-1)
+    flat_indices = np.asarray(flat_indices, dtype=np.intp).reshape(target_lats.shape)
+    return np.unravel_index(flat_indices, source_lats.shape)
+
+
+def gaussian_mean(
     source_lats: ArrayLike,
     source_lons: ArrayLike,
     values: ArrayLike,

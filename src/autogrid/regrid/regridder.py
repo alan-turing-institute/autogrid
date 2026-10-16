@@ -1,4 +1,4 @@
-"""Regrid numpy arrays between Grids, using iris internally."""
+"""Regrid numpy arrays between Grids, with iris or by great circle distance."""
 
 from collections.abc import Callable
 from functools import cached_property
@@ -13,7 +13,7 @@ from pyproj import Transformer
 
 from autogrid.adaptors.iris import to_cube
 from autogrid.grids import Grid
-from autogrid.regrid import nearest
+from autogrid.regrid import grid_search
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
 
@@ -47,8 +47,8 @@ class Regridder:
 
     @cached_property
     def _great_circle_indices(self) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
-        """Source (iy, ix) of the nearest source point to each target point."""
-        return nearest.indices_grid_to_grid(self.source, self.target)
+        """Source (iy, ix) of the great circle nearest source point to each target."""
+        return grid_search.grid_to_grid(self.source, self.target)
 
     @cached_property
     def outside_source(self) -> NDArray[np.bool_]:
@@ -100,6 +100,10 @@ class Regridder:
             An array with shape (..., ny, nx) on the target grid. Target points
             outside the source grid, or derived from NaN or masked source
             points, are NaN.
+
+        Raises:
+            ValueError: If the data shape does not end with the source grid
+                shape, or the method is unknown.
         """
         data = np.ma.masked_invalid(data)
         if data.shape[-2:] != self.source.shape:
