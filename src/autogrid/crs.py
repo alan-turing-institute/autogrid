@@ -41,15 +41,16 @@ def latlon_crs(crs: CRS) -> CRS:
 def described_by_ellipsoid(crs: CRS) -> bool:
     """Whether the CRS's ellipsoid, e.g. as a cartopy Globe, fully describes it.
 
-    This holds when the CRS has a Greenwich prime meridian, and a datum that is
-    either WGS 84 or nothing more than its ellipsoid. Otherwise, e.g. for
-    EPSG:4807 (Paris prime meridian) or EPSG:4277 (OSGB 1936 datum), the
-    ellipsoid alone would silently drop the prime meridian or datum shift.
+    This holds when the CRS has a Greenwich prime meridian, and a datum that a
+    PROJ.4 string fully describes, either by name, e.g. WGS 84, NAD83 or NAD27,
+    or as nothing more than its ellipsoid. Otherwise, e.g. for EPSG:4807 (Paris
+    prime meridian) or EPSG:4277 (OSGB 1936 datum), the ellipsoid and datum name
+    alone would silently drop the prime meridian or datum shift.
     """
     if crs.geodetic_crs is None:
         return False
     geodetic = base_geographic_crs(crs)
-    # PROJ.4 strings can only name WGS 84 or a bare ellipsoid as the datum
+    # PROJ.4 strings can only name a few datums, or give a bare ellipsoid
     lossless = geodetic.equals(
         CRS.from_dict(_proj4_dict(geodetic)), ignore_axis_order=True
     )

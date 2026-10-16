@@ -158,8 +158,8 @@ def coord_system(crs: CRS) -> CoordSystem:
 
     Latitude-longitude and rotated pole CRSs must be an iris GeogCS or
     RotatedGeogCS for iris to wrap longitudes and regrid in degrees, and a plain
-    one if an ellipsoid, or the WGS 84 datum, fully describes them. Anything
-    else is wrapped.
+    one if an ellipsoid, or a datum PROJ.4 can name (e.g. WGS 84, NAD83 or
+    NAD27), fully describes them. Anything else is wrapped.
 
     Raises:
         ValueError: If a latitude-longitude or rotated pole CRS is not in
@@ -179,7 +179,7 @@ def coord_system(crs: CRS) -> CoordSystem:
         if mapping == "latitude_longitude":
             return CartopyGeogCS(crs)
         return CartopyRotatedGeogCS(crs)
-    # Keep a WGS 84 datum, so iris shifts between it and other datums
+    # Keep a named datum, e.g. WGS 84 or NAD83, so iris shifts between it and others
     if (datum := proj4_datum(crs)) is not None:
         geog_cs = GeogCS.from_datum(datum)
     else:

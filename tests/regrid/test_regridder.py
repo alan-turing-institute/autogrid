@@ -271,6 +271,17 @@ def test_outside_source_handles_grads() -> None:
     np.testing.assert_array_equal(outside, [[False, True], [False, True]])
 
 
+def test_outside_source_handles_grads_from_degrees() -> None:
+    # Iris can't build a coordinate system for EPSG:4807, as it is in grads, but
+    # outside_source needs none. The source spans 45 to 355 grads east of Paris,
+    # which is 2.34 degrees east, so from 42.84 degrees east, eastward to 38.16
+    # degrees west
+    source = Grid(np.arange(50, 351, 10.0), np.arange(-50, 51, 10.0), "EPSG:4807")
+    target = Grid([-40.0, -36.0], [0.0, 10.0], "EPSG:4326")
+    outside = Regridder(source, target).outside_source
+    np.testing.assert_array_equal(outside, [[False, True], [False, True]])
+
+
 def test_global_grads_grid_is_circular() -> None:
     grid = Grid(np.arange(0, 400, 10.0) + 5, np.arange(-95, 100, 10.0), "EPSG:4807")
     assert grid.is_circular

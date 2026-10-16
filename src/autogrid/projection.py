@@ -1,11 +1,9 @@
 """Convert pyproj CRSs to cartopy projections."""
 
-import math
-
 import cartopy.crs as ccrs
 from pyproj import CRS
 
-from autogrid.crs import described_by_ellipsoid
+from autogrid.crs import described_by_ellipsoid, full_turn
 
 
 def cartopy_projection(crs: CRS) -> ccrs.Projection:
@@ -44,7 +42,7 @@ def cartopy_projection(crs: CRS) -> ccrs.Projection:
     projection = ccrs.Projection(crs)
     if crs.is_geographic:
         # Plot the whole globe, not just the CRS's area of use, in its own units
-        half_turn = math.pi / crs.axis_info[0].unit_conversion_factor
+        half_turn = full_turn(crs) / 2
         projection.bounds = (-half_turn, half_turn, -half_turn / 2, half_turn / 2)
         projection.threshold = half_turn / 100
     return projection
