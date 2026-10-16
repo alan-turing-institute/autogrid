@@ -113,29 +113,29 @@ class Grid:
         return (len(self.y_points), len(self.x_points))
 
     @cached_property
+    def trf_from_latlon(self) -> Transformer:
+        """Transformer from longitude and latitude to the grid's x and y."""
+        return Transformer.from_crs(latlon_crs(self.crs), self.crs, always_xy=True)
+
+    @cached_property
+    def trf_to_latlon(self) -> Transformer:
+        """Transformer from the grid's x and y to longitude and latitude."""
+        return Transformer.from_crs(self.crs, latlon_crs(self.crs), always_xy=True)
+
+    @cached_property
     def x(self) -> NDArray[np.float64]:
         """x coordinate of each grid point, with shape (ny, nx)."""
         return np.broadcast_to(self.x_points, self.shape)
 
     @cached_property
-    def y(self) -> NDArray[np.float64]:
-        """y coordinate of each grid point, with shape (ny, nx)."""
-        return np.broadcast_to(self.y_points[:, np.newaxis], self.shape)
-
-    @cached_property
-    def _from_latlon(self) -> Transformer:
-        """Transformer from longitude and latitude to the grid's x and y."""
-        return Transformer.from_crs(latlon_crs(self.crs), self.crs, always_xy=True)
-
-    @cached_property
-    def _to_latlon(self) -> Transformer:
-        """Transformer from the grid's x and y to longitude and latitude."""
-        return Transformer.from_crs(self.crs, latlon_crs(self.crs), always_xy=True)
-
-    @cached_property
     def x_bounds(self) -> NDArray[np.float64]:
         """x coordinate bounds for each grid cell, with shape (nx, 2)."""
         return guess_bounds(self.x_points)
+
+    @cached_property
+    def y(self) -> NDArray[np.float64]:
+        """y coordinate of each grid point, with shape (ny, nx)."""
+        return np.broadcast_to(self.y_points[:, np.newaxis], self.shape)
 
     @cached_property
     def y_bounds(self) -> NDArray[np.float64]:
@@ -177,7 +177,7 @@ class Grid:
             Tuple of (latitude, longitude) arrays in degrees, with the shape of
             the block of rows.
         """
-        lon, lat = self._to_latlon.transform(self.x[rows], self.y[rows])
+        lon, lat = self.trf_to_latlon.transform(self.x[rows], self.y[rows])
         return lat, lon
 
     @classmethod

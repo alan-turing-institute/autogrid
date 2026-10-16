@@ -58,7 +58,7 @@ def grid_to_points(
     """
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
     lats, lons = target_lats.ravel(), target_lons.ravel()
-    x, y = source._from_latlon.transform(lons, lats)
+    x, y = source.trf_from_latlon.transform(lons, lats)
     x = normalise_longitude(x, source.x_bounds, source.crs)
     iy = _nearest_index(source.y_points, y)
     ix = _nearest_index(source.x_points, x)
@@ -76,7 +76,9 @@ def grid_to_points(
         """Squared straight-line distance between unit vectors, as in a KD-tree."""
         # Grid.latitudes and Grid.longitudes come from this transform, so
         # distances match those of the KD-tree search exactly
-        lon, lat = source._to_latlon.transform(source.x_points[ix], source.y_points[iy])
+        lon, lat = source.trf_to_latlon.transform(
+            source.x_points[ix], source.y_points[iy]
+        )
         vectors = unit_vectors(lat, lon).reshape(*iy.shape, 3)
         return ((vectors - targets) ** 2).sum(axis=-1)
 
