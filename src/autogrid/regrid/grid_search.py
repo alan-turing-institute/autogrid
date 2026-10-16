@@ -76,8 +76,12 @@ def grid_to_points(
         edge_ix = np.concatenate(
             [cols, cols, np.zeros_like(rows), np.full_like(rows, nx - 1)]
         )
-        # Build a KD-tree over the edge points, and find the nearest edge point to each
-        tree = KDTree(point_vectors(source, edge_iy, edge_ix))
+        # Build a KD-tree over the edge points that have a latitude and longitude, and
+        # find the nearest edge point to each
+        vectors = point_vectors(source, edge_iy, edge_ix)
+        valid = np.isfinite(vectors).all(-1)
+        edge_iy, edge_ix = edge_iy[valid], edge_ix[valid]
+        tree = KDTree(vectors[valid])
         _, k = tree.query(targets[outside], workers=-1)
         iy[outside], ix[outside] = edge_iy[k], edge_ix[k]
 
@@ -85,12 +89,13 @@ def grid_to_points(
     while len(active):
         # Move each active point to whichever of its cell and eight neighbours is
         # nearest, as squared straight-line distance in a KD-tree, until that is its
-        # own cell
+        # own cell. Cells with no latitude and longitude, such as those beyond the
+        # valid area of the source CRS, are never nearest
         y = np.clip(iy[active, np.newaxis] + _NEIGHBOURS[:, 0], 0, ny - 1)
         x = ix[active, np.newaxis] + _NEIGHBOURS[:, 1]
         x = x % nx if source.is_circular else np.clip(x, 0, nx - 1)
         d = ((point_vectors(source, y, x) - targets[active, np.newaxis]) ** 2).sum(-1)
-        k = np.argmin(d, axis=1)
+        k = np.argmin(np.where(np.isnan(d), np.inf, d), axis=1)
         moved = k > 0
         active, rows, k = active[moved], np.flatnonzero(moved), k[moved]
         iy[active], ix[active] = y[rows, k], x[rows, k]
