@@ -5,24 +5,7 @@ from iris.coord_systems import GeogCS, RotatedGeogCS
 from pyproj import CRS
 
 from autogrid import Grid
-from autogrid.adaptors.iris import CartopyRotatedGeogCS, coord_system, to_cube
-
-
-@pytest.mark.parametrize(
-    ("crs", "metres"),
-    [
-        ("EPSG:27700", 1.0),
-        ("EPSG:2263", 0.3048006096012192),
-        ("+proj=utm +zone=30 +units=km", 1000.0),
-        ("+proj=utm +zone=30 +units=ind-ft", 0.30479841),
-    ],
-)
-def test_projected_coords_have_crs_units(crs: str, metres: float) -> None:
-    cube = to_cube(Grid(np.arange(3.0), np.arange(4.0), crs))
-    for name in ("projection_x_coordinate", "projection_y_coordinate"):
-        units = cube.coord(name).units
-        assert isinstance(units, Unit)
-        np.testing.assert_allclose(units.convert(1, "m"), metres)
+from autogrid.regrid.cubes import CartopyRotatedGeogCS, coord_system, to_cube
 
 
 def test_coord_systems_are_not_shared() -> None:
@@ -59,3 +42,20 @@ def test_rotated_pole_is_rotated_geog_cs(crs: CRS, cs_type: type) -> None:
     assert type(cs) is cs_type
     assert cs.grid_north_pole_latitude == 37.5
     assert cs.grid_north_pole_longitude == 177.5
+
+
+@pytest.mark.parametrize(
+    ("crs", "metres"),
+    [
+        ("EPSG:27700", 1.0),
+        ("EPSG:2263", 0.3048006096012192),
+        ("+proj=utm +zone=30 +units=km", 1000.0),
+        ("+proj=utm +zone=30 +units=ind-ft", 0.30479841),
+    ],
+)
+def test_projected_coords_have_crs_units(crs: str, metres: float) -> None:
+    cube = to_cube(Grid(np.arange(3.0), np.arange(4.0), crs))
+    for name in ("projection_x_coordinate", "projection_y_coordinate"):
+        units = cube.coord(name).units
+        assert isinstance(units, Unit)
+        np.testing.assert_allclose(units.convert(1, "m"), metres)

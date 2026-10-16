@@ -1,4 +1,4 @@
-"""Convert autogrid objects to iris objects."""
+"""Build iris cubes and coordinate systems on Grids, as the Regridder uses them."""
 
 import math
 from typing import Any
@@ -12,15 +12,15 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike
 from pyproj import CRS, Transformer
 
-from autogrid.adaptors.cartopy import cartopy_projection
 from autogrid.crs import (
     base_geographic_crs,
-    described_by_globe,
+    described_by_ellipsoid,
     in_degrees,
     prime_meridian_degrees,
-    proj4_dict,
+    proj4_datum,
 )
-from autogrid.grids.grid import Grid
+from autogrid.grids import Grid
+from autogrid.projection import cartopy_projection
 
 
 class CartopyMixin:
@@ -175,12 +175,12 @@ def coord_system(crs: CRS) -> CoordSystem:
             f"units {[axis.unit_name for axis in crs.axis_info]}."
         )
         raise ValueError(msg)
-    if not described_by_globe(crs):
+    if not described_by_ellipsoid(crs):
         if mapping == "latitude_longitude":
             return CartopyGeogCS(crs)
         return CartopyRotatedGeogCS(crs)
     # Keep a WGS 84 datum, so iris shifts between it and other datums
-    if (datum := proj4_dict(base_geographic_crs(crs)).get("datum")) is not None:
+    if (datum := proj4_datum(crs)) is not None:
         geog_cs = GeogCS.from_datum(datum)
     else:
         geog_cs = GeogCS(cf["semi_major_axis"], cf["semi_minor_axis"])

@@ -38,8 +38,8 @@ def latlon_crs(crs: CRS) -> CRS:
     return base if in_degrees(base) and prime_meridian_degrees(base) == 0 else WGS84
 
 
-def described_by_globe(crs: CRS) -> bool:
-    """Whether a cartopy Globe built from the CRS's ellipsoid fully describes it.
+def described_by_ellipsoid(crs: CRS) -> bool:
+    """Whether the CRS's ellipsoid, e.g. as a cartopy Globe, fully describes it.
 
     This holds when the CRS has a Greenwich prime meridian, and a datum that is
     either WGS 84 or nothing more than its ellipsoid. Otherwise, e.g. for
@@ -51,7 +51,7 @@ def described_by_globe(crs: CRS) -> bool:
     geodetic = base_geographic_crs(crs)
     # PROJ.4 strings can only name WGS 84 or a bare ellipsoid as the datum
     lossless = geodetic.equals(
-        CRS.from_dict(proj4_dict(geodetic)), ignore_axis_order=True
+        CRS.from_dict(_proj4_dict(geodetic)), ignore_axis_order=True
     )
     return lossless and prime_meridian_degrees(geodetic) == 0
 
@@ -81,7 +81,12 @@ def prime_meridian_degrees(crs: CRS) -> float:
     return math.degrees(pm.longitude * float(pm.unit_conversion_factor))
 
 
-def proj4_dict(crs: CRS) -> dict[str, Any]:
+def proj4_datum(crs: CRS) -> str | None:
+    """Return the PROJ.4 name of the datum a CRS is based on, e.g. "WGS84", if any."""
+    return _proj4_dict(base_geographic_crs(crs)).get("datum")
+
+
+def _proj4_dict(crs: CRS) -> dict[str, Any]:
     """Return the PROJ.4 parameters of a CRS, without warning that they are lossy."""
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", "You will likely lose", UserWarning)

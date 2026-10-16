@@ -1,11 +1,11 @@
-"""Convert autogrid objects to cartopy objects."""
+"""Convert pyproj CRSs to cartopy projections."""
 
 import math
 
 import cartopy.crs as ccrs
 from pyproj import CRS
 
-from autogrid.crs import described_by_globe
+from autogrid.crs import described_by_ellipsoid
 
 
 def cartopy_projection(crs: CRS) -> ccrs.Projection:
@@ -21,7 +21,7 @@ def cartopy_projection(crs: CRS) -> ccrs.Projection:
         semimajor_axis=cf.get("semi_major_axis"),
         semiminor_axis=cf.get("semi_minor_axis"),
     )
-    match cf.get("grid_mapping_name") if described_by_globe(crs) else None:
+    match cf.get("grid_mapping_name") if described_by_ellipsoid(crs) else None:
         case "latitude_longitude":
             return ccrs.PlateCarree(globe=globe)
         case "lambert_azimuthal_equal_area":

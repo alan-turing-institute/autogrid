@@ -5,8 +5,8 @@ from pyproj import CRS, Transformer
 
 import autogrid.regrid.grid_search
 from autogrid import Grid, Regridder
-from autogrid.adaptors.iris import to_cube
 from autogrid.grids import build_global_latlon
+from autogrid.regrid.cubes import to_cube
 from autogrid.regrid.grid_search import grid_to_grid
 from autogrid.regrid.points import nearest_indices
 from autogrid.regrid.regridder import Method

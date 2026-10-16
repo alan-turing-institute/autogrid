@@ -10,9 +10,9 @@ from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 
-from autogrid.adaptors.iris import sample_transformer, to_cube
 from autogrid.grids import Grid
 from autogrid.regrid import grid_search
+from autogrid.regrid.cubes import sample_transformer, to_cube
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
 
