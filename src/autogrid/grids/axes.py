@@ -57,5 +57,5 @@ def normalise_longitude(
     if not crs.is_geographic:
         return x
     turn = full_turn(crs)
-    middle = (x_bounds.min() + x_bounds.max()) / 2
+    middle = (np.min(x_bounds) + np.max(x_bounds)) / 2
     return middle + (x - middle + turn / 2) % turn - turn / 2

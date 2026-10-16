@@ -20,7 +20,7 @@ def test_ease2_south_25p0km() -> None:
     # Rows run top to bottom, cell centres half a cell in from the edge
     assert grid.x[0, 0] == -8_987_500
     assert grid.y[0, 0] == 8_987_500
-    assert np.isclose(grid.latitudes.min(), -90, atol=0.2)
+    assert np.isclose(np.min(grid.latitudes), -90, atol=0.2)
 
 
 def test_ease2_global_extent() -> None:

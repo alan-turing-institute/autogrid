@@ -164,14 +164,15 @@ class Grid:
             A boolean array with the shape of the points, which is False for
             points outside the cell bounds or with non-finite coordinates.
         """
+        x = np.asarray(x, dtype=np.float64)
         if not prenormalised:
             x = normalise_longitude(x, self.x_bounds, self.crs)
         y = np.asarray(y, dtype=np.float64)
         # NaN fails every comparison, so is never inside
-        inside = (y >= self.y_bounds.min()) & (y <= self.y_bounds.max())
+        inside = (y >= np.min(self.y_bounds)) & (y <= np.max(self.y_bounds))
         if self.is_circular:
             return inside & np.isfinite(x)
-        return inside & (x >= self.x_bounds.min()) & (x <= self.x_bounds.max())
+        return inside & (x >= np.min(self.x_bounds)) & (x <= np.max(self.x_bounds))
 
     def latlon_slice(
         self, rows: slice
