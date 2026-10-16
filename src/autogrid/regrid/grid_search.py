@@ -6,6 +6,7 @@ building a KD-tree over all of its points as points.nearest_indices does.
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from pyproj import Transformer
 from scipy.spatial import KDTree
 
 from autogrid.grids import Grid
@@ -13,7 +14,7 @@ from autogrid.grids.axes import normalise_longitude
 from autogrid.regrid.sphere import check_points, unit_vectors
 
 # Largest number of target points whose latitudes and longitudes are held at
-# once by grid_to_grid and outside_grid
+# once by search_grid and outside_grid
 _BLOCK_POINTS = 2**22
 
 # Offsets of a grid cell and its eight neighbours, as (row, column), with the cell
@@ -56,6 +57,18 @@ def grid_to_points(
             empty, or are not all finite.
     """
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
+    iy, ix, _ = _search(source, target_lats, target_lons)
+    return iy, ix
+
+
+def _search(
+    source: Grid, target_lats: NDArray[np.float64], target_lons: NDArray[np.float64]
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_]]:
+    """As grid_to_points for checked targets, also flagging those outside the source.
+
+    A target is outside when it starts its search outside the cells of the
+    source grid.
+    """
     lats, lons = target_lats.ravel(), target_lons.ravel()
     x, y = source.trf_from_latlon.transform(lons, lats)
     x = normalise_longitude(x, source.x_bounds, source.crs)
@@ -66,7 +79,7 @@ def grid_to_points(
     # The nearest point to one outside the grid is usually on its edge, where a search
     # from the nearest point in the source CRS can stop at the wrong corner, so start
     # from the nearest edge point instead
-    outside = ~source.contains(x, y)
+    outside = ~source.contains(x, y, prenormalised=True)
     if outside.any():
         # Get the indices of the points on the edge of the grid
         rows, cols = np.arange(ny), np.arange(nx)
@@ -99,7 +112,8 @@ def grid_to_points(
         moved = k > 0
         active, rows, k = active[moved], np.flatnonzero(moved), k[moved]
         iy[active], ix[active] = y[rows, k], x[rows, k]
-    return iy.reshape(target_lats.shape), ix.reshape(target_lats.shape)
+    shape = target_lats.shape
+    return iy.reshape(shape), ix.reshape(shape), outside.reshape(shape)
 
 
 def grid_to_grid(
@@ -120,11 +134,31 @@ def grid_to_grid(
         Tuple of (iy, ix) integer arrays with the target grid shape (ny, nx),
         giving the row and column of the nearest source point.
     """
+    iy, ix, _ = search_grid(source, target)
+    return iy, ix
+
+
+def search_grid(
+    source: Grid, target: Grid
+) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_]]:
+    """As grid_to_grid, also flagging target points outside the source grid.
+
+    A target point is outside when its search starts outside the cells of the
+    source grid, having reached the source CRS through its own latitude and
+    longitude, with no datum shift between the grids.
+
+    Returns:
+        Tuple of (iy, ix, outside) arrays with the target grid shape (ny, nx).
+    """
     iy = np.empty(target.shape, dtype=np.intp)
     ix = np.empty(target.shape, dtype=np.intp)
+    outside = np.empty(target.shape, dtype=np.bool_)
     for block in row_blocks(target):
-        iy[block], ix[block] = grid_to_points(source, *target.latlon_slice(block))
-    return iy, ix
+        # Grid latitudes and longitudes are always finite, so need no checks
+        iy[block], ix[block], outside[block] = _search(
+            source, *target.latlon_slice(block)
+        )
+    return iy, ix, outside
 
 
 def nearest_index(
@@ -138,25 +172,27 @@ def nearest_index(
     return np.where(nearer_lower, upper - 1, upper)
 
 
-def outside_grid(source: Grid, target: Grid) -> NDArray[np.bool_]:
+def outside_grid(
+    source: Grid, target: Grid, transformer: Transformer | None
+) -> NDArray[np.bool_]:
     """Flag target grid points that lie outside the cells of the source grid.
 
-    Target points reach the source CRS through their own latitudes and
-    longitudes, as in grid_to_grid, so a point is outside exactly when its
-    search starts outside the source grid. As there, no datum shift is applied
-    between the grids, and the target is processed a block of rows at a time.
+    The target is processed a block of rows at a time.
 
     Args:
         source: Grid of the source points.
         target: Grid of the target points.
+        transformer: Transformer from the target CRS to the source CRS, or None
+            if the target points are already in the source CRS.
 
     Returns:
         A boolean array with the target grid shape (ny, nx).
     """
     outside = np.empty(target.shape, dtype=np.bool_)
     for block in row_blocks(target):
-        lats, lons = target.latlon_slice(block)
-        x, y = source.trf_from_latlon.transform(lons, lats)
+        x, y = target.x[block], target.y[block]
+        if transformer is not None:
+            x, y = transformer.transform(x, y)
         outside[block] = ~source.contains(x, y)
     return outside
 

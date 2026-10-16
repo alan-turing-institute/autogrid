@@ -35,8 +35,7 @@ def latlon_crs(crs: CRS) -> CRS:
     meridian, in grads), it is WGS 84.
     """
     base = base_geographic_crs(crs)
-    in_degrees = all(axis.unit_name == "degree" for axis in base.axis_info)
-    return base if in_degrees and prime_meridian_degrees(base) == 0 else WGS84
+    return base if in_degrees(base) and prime_meridian_degrees(base) == 0 else WGS84
 
 
 def described_by_globe(crs: CRS) -> bool:
@@ -55,6 +54,11 @@ def described_by_globe(crs: CRS) -> bool:
         CRS.from_dict(proj4_dict(geodetic)), ignore_axis_order=True
     )
     return lossless and prime_meridian_degrees(geodetic) == 0
+
+
+def in_degrees(crs: CRS) -> bool:
+    """Whether every axis of a CRS is in degrees."""
+    return all(axis.unit_name == "degree" for axis in crs.axis_info)
 
 
 def full_turn(crs: CRS) -> float:

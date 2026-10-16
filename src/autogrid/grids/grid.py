@@ -148,19 +148,24 @@ class Grid:
         """y coordinate bounds for each grid cell, with shape (ny, 2)."""
         return guess_bounds(self.y_points)
 
-    def contains(self, x: ArrayLike, y: ArrayLike) -> NDArray[np.bool_]:
+    def contains(
+        self, x: ArrayLike, y: ArrayLike, *, prenormalised: bool = False
+    ) -> NDArray[np.bool_]:
         """Flag points that lie within the cells of the grid.
 
         Args:
             x: x coordinates of the points in the grid's CRS. For a geographic
                 CRS, these are compared modulo a full turn of longitude.
             y: y coordinates of the points in the grid's CRS, of the same shape.
+            prenormalised: Whether x has already been shifted to match the cells
+                with normalise_longitude, so need not be shifted again.
 
         Returns:
             A boolean array with the shape of the points, which is False for
             points outside the cell bounds or with non-finite coordinates.
         """
-        x = normalise_longitude(x, self.x_bounds, self.crs)
+        if not prenormalised:
+            x = normalise_longitude(x, self.x_bounds, self.crs)
         y = np.asarray(y, dtype=np.float64)
         # NaN fails every comparison, so is never inside
         inside = (y >= self.y_bounds.min()) & (y <= self.y_bounds.max())

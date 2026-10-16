@@ -5,7 +5,12 @@ from pyproj import Transformer
 import autogrid.regrid.grid_search
 from autogrid import Grid
 from autogrid.grids import build_ease2, build_global_latlon
-from autogrid.regrid.grid_search import grid_to_grid, grid_to_points, outside_grid
+from autogrid.regrid.grid_search import (
+    grid_to_grid,
+    grid_to_points,
+    outside_grid,
+    search_grid,
+)
 from autogrid.regrid.points import nearest_indices
 
 
@@ -126,16 +131,17 @@ def test_outside_grid_matches_in_blocks(
     south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
-    want = outside_grid(regional, south)
+    trf = Transformer.from_crs(south.crs, regional.crs, always_xy=True)
+    want = outside_grid(regional, south, trf)
     monkeypatch.setattr(
         autogrid.regrid.grid_search, "_BLOCK_POINTS", 5 * south.shape[1] + 1
     )
-    np.testing.assert_array_equal(outside_grid(regional, south), want)
+    np.testing.assert_array_equal(outside_grid(regional, south, trf), want)
     assert want.any()
     assert not want.all()
 
 
-def test_outside_grid_uses_search_coordinates() -> None:
+def test_search_grid_flags_outside_by_search_coordinates() -> None:
     # British National Grid points (OSGB36 datum) straddling the western edge
     # of a WGS 84 source, 20 m apart, so a datum shift of ~100 m would move
     # the edge by several points
@@ -145,7 +151,7 @@ def test_outside_grid_uses_search_coordinates() -> None:
     target = Grid(x0 + np.arange(-500, 500, 20.0), [y0, y0 + 20], 27700)
     lats, lons = target.latitudes, target.longitudes
     want = ~source.contains(*source.trf_from_latlon.transform(lons, lats))
-    np.testing.assert_array_equal(outside_grid(source, target), want)
+    np.testing.assert_array_equal(search_grid(source, target)[2], want)
     shifted = Transformer.from_crs(27700, 4326, always_xy=True).transform(
         target.x, target.y
     )

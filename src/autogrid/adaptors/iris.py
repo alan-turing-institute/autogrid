@@ -1,7 +1,7 @@
 """Convert autogrid objects to iris objects."""
 
 import math
-from typing import Literal
+from typing import Any
 
 import cartopy.crs as ccrs
 import numpy as np
@@ -10,12 +10,13 @@ from iris.coord_systems import CoordSystem, GeogCS, RotatedGeogCS
 from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike
-from pyproj import CRS
+from pyproj import CRS, Transformer
 
 from autogrid.adaptors.cartopy import cartopy_projection
 from autogrid.crs import (
     base_geographic_crs,
     described_by_globe,
+    in_degrees,
     prime_meridian_degrees,
     proj4_dict,
 )
@@ -46,7 +47,11 @@ class CartopyCS(CartopyMixin, CoordSystem):
 
     def __init__(self, crs: CRS) -> None:
         self.crs = crs
-        self.grid_mapping_name = crs.to_cf().get("grid_mapping_name", "unknown")  # ty: ignore[invalid-attribute-access]  # pyright: ignore[reportAttributeAccessIssue]
+
+    # A property, not an attribute, so the CRS is only converted when needed
+    @property
+    def grid_mapping_name(self) -> str:  # ty: ignore[invalid-property-type-override]  # pyright: ignore[reportIncompatibleVariableOverride]
+        return self.crs.to_cf().get("grid_mapping_name", "unknown")
 
 
 class CartopyGeogCS(CartopyMixin, GeogCS):
@@ -75,29 +80,40 @@ class CartopyRotatedGeogCS(CartopyMixin, RotatedGeogCS):
 
     def __init__(self, crs: CRS) -> None:
         super().__init__(
-            **_rotation(crs), ellipsoid=CartopyGeogCS(base_geographic_crs(crs))
+            **_rotation(crs.to_cf()),
+            ellipsoid=CartopyGeogCS(base_geographic_crs(crs)),
         )
         self.crs = crs
 
 
-def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:
-    """Build an iris dimension coordinate for one axis of a Grid."""
-    if grid.crs.to_cf().get("grid_mapping_name") == "rotated_latitude_longitude":
-        name, units = f"grid_{'longitude' if axis == 'x' else 'latitude'}", "degrees"
+def _dim_coords(grid: Grid) -> tuple[DimCoord, DimCoord]:
+    """Build the iris (y, x) dimension coordinates of a Grid."""
+    # Build the coordinate system once for both axes, as it is slow
+    cs = coord_system(grid.crs)
+    if isinstance(cs, RotatedGeogCS):
+        names, units = ("grid_latitude", "grid_longitude"), "degrees"
     elif grid.is_geographic:
-        name, units = "longitude" if axis == "x" else "latitude", "degrees"
+        names, units = ("latitude", "longitude"), "degrees"
     else:
-        name = f"projection_{axis}_coordinate"
+        names = ("projection_y_coordinate", "projection_x_coordinate")
         units = _projected_units(grid.crs)
-    return DimCoord(
-        grid.x_points if axis == "x" else grid.y_points,
-        standard_name=name,
+    y = DimCoord(
+        grid.y_points,
+        standard_name=names[0],
         units=units,
-        bounds=grid.x_bounds if axis == "x" else grid.y_bounds,
-        coord_system=coord_system(grid.crs),
-        # Mark global longitudes as circular so regridders wrap correctly
-        circular=axis == "x" and grid.is_circular,
+        bounds=grid.y_bounds,
+        coord_system=cs,
     )
+    x = DimCoord(
+        grid.x_points,
+        standard_name=names[1],
+        units=units,
+        bounds=grid.x_bounds,
+        coord_system=cs,
+        # Mark global longitudes as circular so regridders wrap correctly
+        circular=grid.is_circular,
+    )
+    return y, x
 
 
 def _projected_units(crs: CRS) -> str:
@@ -128,9 +144,8 @@ def _projected_units(crs: CRS) -> str:
     return f"{factor!r} m"
 
 
-def _rotation(crs: CRS) -> dict[str, float]:
-    """Return the pole rotation of a rotated pole CRS, as RotatedGeogCS takes it."""
-    cf = crs.to_cf()
+def _rotation(cf: dict[str, Any]) -> dict[str, float]:
+    """Return a rotated pole CRS's CF pole rotation, as RotatedGeogCS takes it."""
     return {
         "grid_north_pole_latitude": cf["grid_north_pole_latitude"],
         "grid_north_pole_longitude": cf["grid_north_pole_longitude"],
@@ -154,7 +169,7 @@ def coord_system(crs: CRS) -> CoordSystem:
     mapping = cf.get("grid_mapping_name")
     if mapping not in ("latitude_longitude", "rotated_latitude_longitude"):
         return CartopyCS(crs)
-    if any(axis.unit_name != "degree" for axis in crs.axis_info):
+    if not in_degrees(crs):
         msg = (
             f"Latitude-longitude CRS {crs.name!r} must be in degrees, but has "
             f"units {[axis.unit_name for axis in crs.axis_info]}."
@@ -171,7 +186,25 @@ def coord_system(crs: CRS) -> CoordSystem:
         geog_cs = GeogCS(cf["semi_major_axis"], cf["semi_minor_axis"])
     if mapping == "latitude_longitude":
         return geog_cs
-    return RotatedGeogCS(**_rotation(crs), ellipsoid=geog_cs)
+    return RotatedGeogCS(**_rotation(cf), ellipsoid=geog_cs)
+
+
+def sample_transformer(source: CRS, target: CRS) -> Transformer | None:
+    """Return the transformer iris regridders use to find target points in a source CRS.
+
+    Iris transforms target points with the cartopy CRSs of the two coordinate
+    systems, applying any datum shift between them, or not at all if the
+    coordinate systems are equal, in which case this returns None.
+    """
+    # Equal CRSs give equal coordinate systems, even where iris can't build one
+    if source == target:
+        return None
+    source_cs, target_cs = coord_system(source), coord_system(target)
+    if source_cs == target_cs:
+        return None
+    return Transformer.from_crs(
+        target_cs.as_cartopy_crs(), source_cs.as_cartopy_crs(), always_xy=True
+    )
 
 
 def to_cube(
@@ -186,7 +219,7 @@ def to_cube(
     """
     shape = grid.shape if data is None else np.shape(data)
     n_lead = len(shape) - 2
-    y, x = coords or (_dim_coord(grid, "y"), _dim_coord(grid, "x"))
+    y, x = coords or _dim_coords(grid)
     return Cube(
         data,
         shape=None if data is not None else shape,

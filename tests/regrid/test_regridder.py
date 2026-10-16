@@ -1,9 +1,11 @@
 import numpy as np
 import pytest
+from iris.analysis._regrid import RectilinearRegridder
 from pyproj import CRS, Transformer
 
 import autogrid.regrid.grid_search
 from autogrid import Grid, Regridder
+from autogrid.adaptors.iris import to_cube
 from autogrid.grids import build_global_latlon
 from autogrid.regrid.grid_search import grid_to_grid
 from autogrid.regrid.points import nearest_indices
@@ -142,10 +144,10 @@ def test_nearest_great_circle_indices_are_cached(
     latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = []
-    real = autogrid.regrid.grid_search.grid_to_grid
+    real = autogrid.regrid.grid_search.search_grid
     monkeypatch.setattr(
         autogrid.regrid.grid_search,
-        "grid_to_grid",
+        "search_grid",
         lambda *args: calls.append(args) or real(*args),
     )
     regridder = Regridder(latlon, south)
@@ -228,6 +230,29 @@ def test_regrid_respects_datum() -> None:
         target.crs, source.crs, always_xy=True
     ).transform(target.x, target.y)
     np.testing.assert_allclose(result, expected, atol=1e-5)
+
+
+def test_outside_source_matches_iris_sample_points() -> None:
+    # British National Grid points (OSGB36 datum) straddling the western edge
+    # of a WGS 84 source, 20 m apart, so the ~100 m datum shift that iris
+    # applies moves the edge by several points
+    source = Grid(np.arange(-2.0, 0.01, 0.01), np.arange(52.0, 53.01, 0.01), 4326)
+    edge = source.x_bounds[0, 0]
+    x0, y0 = Transformer.from_crs(4326, 27700, always_xy=True).transform(edge, 52.5)
+    target = Grid(x0 + np.arange(-500, 500, 20.0), [y0, y0 + 20], 27700)
+    regridder = Regridder(source, target)
+    src_y, _ = to_cube(source).dim_coords
+    tgt_y, tgt_x = to_cube(target).dim_coords
+    x, y = RectilinearRegridder._sample_grid(src_y.coord_system, tgt_x, tgt_y)
+    want = ~source.contains(x, y)
+    np.testing.assert_array_equal(regridder.outside_source, want)
+    assert want.any()
+    assert not want.all()
+    # The great circle search compares latitudes and longitudes unshifted
+    _, _, unshifted = regridder._great_circle
+    assert (unshifted != want).any()
+    nan = np.isnan(regridder.apply(np.ones(source.shape), "nearest_great_circle"))
+    np.testing.assert_array_equal(nan, unshifted)
 
 
 def test_regrid_rejects_latlon_not_in_degrees() -> None:

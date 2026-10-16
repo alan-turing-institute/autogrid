@@ -10,7 +10,7 @@ from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 
-from autogrid.adaptors.iris import to_cube
+from autogrid.adaptors.iris import sample_transformer, to_cube
 from autogrid.grids import Grid
 from autogrid.regrid import grid_search
 
@@ -45,21 +45,32 @@ class Regridder:
         return to_cube(self.source).dim_coords
 
     @cached_property
-    def _great_circle_indices(self) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
-        """Source (iy, ix) of the great circle nearest source point to each target."""
-        return grid_search.grid_to_grid(self.source, self.target)
+    def _great_circle(
+        self,
+    ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_]]:
+        """Source (iy, ix) of the great circle nearest source point to each target,
+        and the flag for targets outside the source grid, from the same search."""
+        return grid_search.search_grid(self.source, self.target)
 
     @cached_property
     def outside_source(self) -> NDArray[np.bool_]:
         """Flag for target points that lie outside the cells of the source grid.
 
-        Target points are compared with the source grid through each grid's
-        own latitudes and longitudes, as in the "nearest_great_circle" search.
+        Target points are transformed into the source CRS as iris does for the
+        "linear", "nearest" and "area_weighted" methods, applying any datum
+        shift between the grids. "nearest_great_circle" instead masks the
+        points whose search starts outside the source grid, found through each
+        grid's own latitudes and longitudes with no datum shift, so it can
+        differ from this near the edge of the source grid if the datums differ.
 
         Returns:
             A boolean array with the target grid shape (ny, nx).
         """
-        return grid_search.outside_grid(self.source, self.target)
+        return grid_search.outside_grid(
+            self.source,
+            self.target,
+            sample_transformer(self.source.crs, self.target.crs),
+        )
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:
         """Return the cached iris regridder for a method, building it if needed."""
@@ -111,12 +122,13 @@ class Regridder:
             )
             raise ValueError(msg)
         if method == "nearest_great_circle":
-            iy, ix = self._great_circle_indices
+            iy, ix, outside = self._great_circle
             result = data[..., iy, ix]
         else:
             result = self._regridder(method)(
                 to_cube(self.source, data, self._source_coords)
             ).data
+            outside = self.outside_source
         result = np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
-        result[..., self.outside_source] = np.nan
+        result[..., outside] = np.nan
         return result
