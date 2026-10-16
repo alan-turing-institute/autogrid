@@ -5,8 +5,9 @@ from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
 from scipy.spatial import KDTree
 
-from autogrid.adaptors.pyproj import full_turn, latlon_crs
-from autogrid.grid import Grid
+from autogrid.adaptors.pyproj import latlon_crs
+from autogrid.grids import Grid
+from autogrid.grids.axes import normalise_longitude
 from autogrid.sphere import check_points, unit_vectors
 
 # Largest number of target points whose latitudes and longitudes are held at
@@ -103,12 +104,7 @@ def indices_grid_to_points(
     x, y = Transformer.from_crs(
         latlon_crs(source.crs), source.crs, always_xy=True
     ).transform(lons, lats)
-    if source.is_geographic:
-        # Wrap onto whichever turn of longitude is nearest the source points
-        turn = full_turn(source.crs)
-        x_lo, x_hi = source.x_points.min(), source.x_points.max()
-        x = x_lo + (x - x_lo) % turn
-        x = np.where(x - x_hi > x_lo + turn - x, x - turn, x)
+    x = normalise_longitude(x, source.x_bounds, source.crs)
     iy = _nearest_index(source.y_points, y)
     ix = _nearest_index(source.x_points, x)
     ny, nx = source.shape
@@ -178,7 +174,7 @@ def indices_grid_to_grid(
     for start in range(0, target.shape[0], rows):
         block = slice(start, start + rows)
         iy[block], ix[block] = indices_grid_to_points(
-            source, *target.latlon_rows(block)
+            source, *target.latlon_slice(block)
         )
     return iy, ix
 

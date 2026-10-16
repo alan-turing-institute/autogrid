@@ -1,6 +1,6 @@
 import numpy as np
 
-from autogrid.grid import Grid
+from autogrid.grids.grid import Grid
 
 
 def build_global_latlon(resolution: float) -> Grid:

@@ -2,7 +2,7 @@ from typing import Literal
 
 import numpy as np
 
-from autogrid.grid import Grid
+from autogrid.grids.grid import Grid
 
 Region = Literal["north", "south", "global"]
 

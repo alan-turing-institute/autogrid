@@ -13,7 +13,7 @@ from pyproj import CRS
 
 from autogrid.adaptors.cartopy import cartopy_projection, described_by_globe
 from autogrid.adaptors.pyproj import prime_meridian_degrees, proj4_dict
-from autogrid.grid import Grid
+from autogrid.grids.grid import Grid
 
 
 class _CartopyMixin:

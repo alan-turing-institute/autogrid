@@ -8,6 +8,7 @@ from pyproj import CRS, Transformer
 
 from autogrid.adaptors import cartopy_projection
 from autogrid.adaptors.pyproj import full_turn, latlon_crs
+from autogrid.grids.axes import check_axis_points, guess_bounds
 
 # Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
 CRSLike = int | str | dict[str, Any] | CRS
@@ -45,8 +46,8 @@ class Grid:
         self.crs: CRS = CRS.from_user_input(crs)
         self.name = name
         # Read-only copies, so a Grid can't change after it has been hashed
-        self.x_points = self._validate_points(x_points, "x")
-        self.y_points = self._validate_points(y_points, "y")
+        self.x_points = check_axis_points(x_points, "x")
+        self.y_points = check_axis_points(y_points, "y")
         self.x_points.flags.writeable = False
         self.y_points.flags.writeable = False
 
@@ -92,12 +93,18 @@ class Grid:
     @property
     def latitudes(self) -> NDArray[np.float64]:
         """True latitude of each grid point in degrees, with shape (ny, nx)."""
-        return self._lonlat[1]
+        return self.lonlat[1]
 
     @property
     def longitudes(self) -> NDArray[np.float64]:
         """True longitude of each grid point in degrees east, with shape (ny, nx)."""
-        return self._lonlat[0]
+        return self.lonlat[0]
+
+    @cached_property
+    def lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Return the longitude and latitude of each grid point, with shape (ny, nx)."""
+        lat, lon = self.latlon_slice(slice(None))
+        return lon, lat
 
     @property
     def projection(self) -> ccrs.Projection:
@@ -122,14 +129,14 @@ class Grid:
     @cached_property
     def x_bounds(self) -> NDArray[np.float64]:
         """x coordinate bounds for each grid cell, with shape (nx, 2)."""
-        return self.guess_bounds(self.x_points)
+        return guess_bounds(self.x_points)
 
     @cached_property
     def y_bounds(self) -> NDArray[np.float64]:
         """y coordinate bounds for each grid cell, with shape (ny, 2)."""
-        return self.guess_bounds(self.y_points)
+        return guess_bounds(self.y_points)
 
-    def latlon_rows(
+    def latlon_slice(
         self, rows: slice
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Latitude and longitude of the points in a block of rows.
@@ -148,12 +155,6 @@ class Grid:
             self.crs, latlon_crs(self.crs), always_xy=True
         ).transform(self.x[rows], self.y[rows])
         return lat, lon
-
-    @cached_property
-    def _lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Return the longitude and latitude of each grid point, with shape (ny, nx)."""
-        lat, lon = self.latlon_rows(slice(None))
-        return lon, lat
 
     @classmethod
     def from_latlon(
@@ -220,37 +221,3 @@ class Grid:
             )
             raise ValueError(msg)
         return cls(x_points, y_points, crs)
-
-    @staticmethod
-    def _validate_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:
-        """Return the points as a new float64 array, checking they define an axis."""
-        points = np.array(points, dtype=np.float64)
-        if points.ndim != 1 or len(points) < 2:
-            msg = (
-                f"{axis} points must be a 1D array of at least two points, but got "
-                f"shape {points.shape}."
-            )
-            raise ValueError(msg)
-        if not np.isfinite(points).all():
-            msg = f"{axis} points must all be finite."
-            raise ValueError(msg)
-        steps = np.diff(points)
-        if not ((steps > 0).all() or (steps < 0).all()):
-            msg = f"{axis} points must be strictly increasing or strictly decreasing."
-            raise ValueError(msg)
-        return points
-
-    @staticmethod
-    def guess_bounds(points: NDArray[np.float64]) -> NDArray[np.float64]:
-        """Return (n, 2) cell bounds halfway between neighbouring points.
-
-        The outer bounds are half a spacing beyond the first and last points.
-        """
-        if len(points) < 2:
-            msg = "At least two points are needed to infer cell bounds."
-            raise ValueError(msg)
-        # Extrapolate one point beyond each end, so every edge is a midpoint
-        first, last = 2 * points[0] - points[1], 2 * points[-1] - points[-2]
-        padded = np.concatenate([[first], points, [last]])
-        edges = (padded[:-1] + padded[1:]) / 2
-        return np.column_stack([edges[:-1], edges[1:]])

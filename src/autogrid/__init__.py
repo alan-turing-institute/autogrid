@@ -1,4 +1,4 @@
-from autogrid.grid import Grid
+from autogrid.grids import Grid
 from autogrid.regridder import Regridder
 
 __all__ = [

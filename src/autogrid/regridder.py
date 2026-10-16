@@ -13,8 +13,8 @@ from pyproj import Transformer
 
 from autogrid import nearest
 from autogrid.adaptors.iris import to_cube
-from autogrid.adaptors.pyproj import full_turn
-from autogrid.grid import Grid
+from autogrid.grids import Grid
+from autogrid.grids.axes import normalise_longitude
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
 
@@ -69,8 +69,7 @@ class Regridder:
         outside = ~np.isfinite(x) | ~np.isfinite(y) | (y < y_lo) | (y > y_hi)
         if source.is_circular:
             return outside
-        if source.is_geographic:
-            x = x_lo + (x - x_lo) % full_turn(source.crs)
+        x = normalise_longitude(x, source.x_bounds, source.crs)
         return outside | (x < x_lo) | (x > x_hi)
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:

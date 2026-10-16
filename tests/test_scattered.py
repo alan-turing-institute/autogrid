@@ -5,8 +5,8 @@ import pytest
 
 import autogrid.scattered
 from autogrid import Grid
-from autogrid.scattered import points_to_points
 from autogrid.grids import build_ease2
+from autogrid.scattered import points_to_points
 from autogrid.sphere import EARTH_RADIUS_KM
 
 
