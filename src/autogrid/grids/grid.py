@@ -6,8 +6,8 @@ from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
 
 from autogrid.crs import CRSLike, full_turn, latlon_crs
+from autogrid.crs.cartopy import projection
 from autogrid.grids.axes import check_axis_points, guess_bounds, normalise_longitude
-from autogrid.projection import cartopy_projection
 
 
 class Grid:
@@ -111,7 +111,7 @@ class Grid:
     @property
     def projection(self) -> ccrs.Projection:
         """The cartopy projection of this grid, e.g. for plotting map axes."""
-        return cartopy_projection(self.crs)
+        return projection(self.crs)
 
     @property
     def shape(self) -> tuple[int, int]:
