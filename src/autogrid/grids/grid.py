@@ -7,7 +7,7 @@ from pyproj import CRS, Transformer
 
 from autogrid.adaptors import cartopy_projection
 from autogrid.crs import CRSLike, full_turn, latlon_crs
-from autogrid.grids.axes import check_axis_points, guess_bounds
+from autogrid.grids.axes import check_axis_points, guess_bounds, normalise_longitude
 
 
 class Grid:
@@ -141,6 +141,26 @@ class Grid:
     def y_bounds(self) -> NDArray[np.float64]:
         """y coordinate bounds for each grid cell, with shape (ny, 2)."""
         return guess_bounds(self.y_points)
+
+    def contains(self, x: ArrayLike, y: ArrayLike) -> NDArray[np.bool_]:
+        """Flag points that lie within the cells of the grid.
+
+        Args:
+            x: x coordinates of the points in the grid's CRS. For a geographic
+                CRS, these are compared modulo a full turn of longitude.
+            y: y coordinates of the points in the grid's CRS, of the same shape.
+
+        Returns:
+            A boolean array with the shape of the points, which is False for
+            points outside the cell bounds or with non-finite coordinates.
+        """
+        x = normalise_longitude(x, self.x_bounds, self.crs)
+        y = np.asarray(y, dtype=np.float64)
+        # NaN fails every comparison, so is never inside
+        inside = (y >= self.y_bounds.min()) & (y <= self.y_bounds.max())
+        if self.is_circular:
+            return inside & np.isfinite(x)
+        return inside & (x >= self.x_bounds.min()) & (x <= self.x_bounds.max())
 
     def latlon_slice(
         self, rows: slice

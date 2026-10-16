@@ -105,13 +105,8 @@ def indices_grid_to_points(
     ix = _nearest_index(source.x_points, x)
     ny, nx = source.shape
     # Search in steps of a quarter of the grid from points outside it, as they
-    # can start far from their nearest point, and NaN is never inside
-    inside = (
-        (x >= source.x_points.min())
-        & (x <= source.x_points.max())
-        & (y >= source.y_points.min())
-        & (y <= source.y_points.max())
-    )
+    # can start far from their nearest point
+    inside = source.contains(x, y)
     step = np.where(inside, 1, max(1, 1 << (max(ny, nx).bit_length() - 3)))
 
     targets = unit_vectors(lats, lons)

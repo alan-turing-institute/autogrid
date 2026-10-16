@@ -13,7 +13,6 @@ from pyproj import Transformer
 
 from autogrid.adaptors.iris import to_cube
 from autogrid.grids import Grid
-from autogrid.grids.axes import normalise_longitude
 from autogrid.regrid import nearest
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
@@ -53,7 +52,7 @@ class Regridder:
 
     @cached_property
     def outside_source(self) -> NDArray[np.bool_]:
-        """Flag target points that lie outside the cells of the source grid.
+        """Flag for target points that lie outside the cells of the source grid.
 
         Returns:
             A boolean array with the target grid shape (ny, nx).
@@ -62,13 +61,7 @@ class Regridder:
         x, y = Transformer.from_crs(target.crs, source.crs, always_xy=True).transform(
             target.x, target.y
         )
-        x_lo, x_hi = source.x_bounds.min(), source.x_bounds.max()
-        y_lo, y_hi = source.y_bounds.min(), source.y_bounds.max()
-        outside = ~np.isfinite(x) | ~np.isfinite(y) | (y < y_lo) | (y > y_hi)
-        if source.is_circular:
-            return outside
-        x = normalise_longitude(x, source.x_bounds, source.crs)
-        return outside | (x < x_lo) | (x > x_hi)
+        return ~source.contains(x, y)
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:
         """Return the cached iris regridder for a method, building it if needed."""

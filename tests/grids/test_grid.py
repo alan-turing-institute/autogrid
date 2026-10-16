@@ -194,3 +194,34 @@ def test_from_latlon_unwraps_grads_across_dateline() -> None:
     grid = Grid([198.0, 199.0, 201.0, 202.0], [50.0, 51.0], "EPSG:4807")
     rebuilt = Grid.from_latlon(grid.latitudes, grid.longitudes, "EPSG:4807")
     np.testing.assert_allclose(np.diff(rebuilt.x_points), [1.0, 2.0, 1.0], atol=1e-6)
+
+
+def test_contains_uses_cell_bounds() -> None:
+    grid = Grid([0.0, 1.0, 2.0], [10.0, 11.0], "EPSG:4326")
+    x = [-0.5, -0.6, 2.5, 2.6, 1.0, 1.0, 1.0, np.nan]
+    y = [10.0, 10.0, 10.0, 10.0, 9.5, 11.6, np.nan, 10.0]
+    np.testing.assert_array_equal(
+        grid.contains(x, y), [True, False, True, False, True, False, False, False]
+    )
+
+
+def test_contains_wraps_longitude() -> None:
+    grid = Grid(np.arange(170.5, 200, 1.0), [0.0, 1.0], "EPSG:4326")
+    np.testing.assert_array_equal(
+        grid.contains([-170.0, 170.0, 0.0], [0.0, 0.0, 0.0]), [True, True, False]
+    )
+
+
+def test_contains_includes_dateline_gap_of_circular_grid(latlon: Grid) -> None:
+    np.testing.assert_array_equal(
+        latlon.contains([-179.9, 179.9, 180.0, 540.0, np.inf], [0.0] * 5),
+        [True, True, True, True, False],
+    )
+
+
+def test_contains_keeps_projected_shape() -> None:
+    grid = build_ease2("south", "25p0km", shape=(432, 432))
+    inside = grid.contains(grid.x, grid.y)
+    assert inside.shape == grid.shape
+    assert inside.all()
+    assert not grid.contains([1e8], [0.0]).any()
