@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 
 import autogrid.regrid.grid_search
 from autogrid import Grid, Regridder
@@ -26,6 +26,29 @@ def test_regrid_matches_analytic_field(
     assert not isinstance(result, np.ma.MaskedArray)
     assert result.shape == south.shape
     np.testing.assert_allclose(result, analytic(south), atol=atol)
+
+
+@pytest.mark.parametrize("method", ["linear", "nearest"])
+def test_rotated_pole_regrids_with_iris(method: Method) -> None:
+    rotated = Grid(
+        np.arange(-10, 10, 0.5),
+        np.arange(-10, 10, 0.5),
+        CRS.from_cf(
+            {
+                "grid_mapping_name": "rotated_latitude_longitude",
+                "grid_north_pole_latitude": 37.5,
+                "grid_north_pole_longitude": 177.5,
+            }
+        ),
+    )
+    target = Grid(np.arange(-5, 5, 1.0), np.arange(45, 55, 1.0), "EPSG:4326")
+    result = Regridder(rotated, target).apply(analytic(rotated), method)
+    expected = Regridder(rotated, target).apply(
+        analytic(rotated), "nearest_great_circle"
+    )
+    np.testing.assert_allclose(result, analytic(target), atol=5e-3)
+    if method == "nearest":
+        np.testing.assert_array_equal(result, expected)
 
 
 def test_area_weighted_conserves_mean(latlon: Grid) -> None:

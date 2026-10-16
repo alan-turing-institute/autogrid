@@ -6,14 +6,19 @@ from typing import Literal
 import cartopy.crs as ccrs
 import numpy as np
 from cf_units import Unit
-from iris.coord_systems import CoordSystem, GeogCS
+from iris.coord_systems import CoordSystem, GeogCS, RotatedGeogCS
 from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike
 from pyproj import CRS
 
 from autogrid.adaptors.cartopy import cartopy_projection
-from autogrid.crs import described_by_globe, prime_meridian_degrees, proj4_dict
+from autogrid.crs import (
+    base_geographic_crs,
+    described_by_globe,
+    prime_meridian_degrees,
+    proj4_dict,
+)
 from autogrid.grids.grid import Grid
 
 
@@ -61,32 +66,18 @@ class CartopyGeogCS(CartopyMixin, GeogCS):
         self.crs = crs
 
 
-def coord_system(crs: CRS) -> CoordSystem:
-    """Return the iris coordinate system for a pyproj CRS.
+class CartopyRotatedGeogCS(CartopyMixin, RotatedGeogCS):
+    """An iris RotatedGeogCS for rotated pole CRSs that an ellipsoid can't describe.
 
-    Latitude-longitude CRSs must be an iris GeogCS for iris to wrap longitudes,
-    and a plain one if an ellipsoid, or the WGS 84 datum, fully describes them.
-    Anything else is wrapped.
-
-    Raises:
-        ValueError: If a latitude-longitude CRS is not in degrees, which iris
-            requires.
+    As for CartopyGeogCS, this keeps the prime meridian and datum shift that a
+    plain RotatedGeogCS would drop.
     """
-    cf = crs.to_cf()
-    if cf.get("grid_mapping_name") != "latitude_longitude":
-        return CartopyCS(crs)
-    if any(axis.unit_name != "degree" for axis in crs.axis_info):
-        msg = (
-            f"Latitude-longitude CRS {crs.name!r} must be in degrees, but has "
-            f"units {[axis.unit_name for axis in crs.axis_info]}."
+
+    def __init__(self, crs: CRS) -> None:
+        super().__init__(
+            **_rotation(crs), ellipsoid=CartopyGeogCS(base_geographic_crs(crs))
         )
-        raise ValueError(msg)
-    if described_by_globe(crs):
-        # Keep a WGS 84 datum, so iris shifts between it and other datums
-        if (datum := proj4_dict(crs).get("datum")) is not None:
-            return GeogCS.from_datum(datum)
-        return GeogCS(cf["semi_major_axis"], cf["semi_minor_axis"])
-    return CartopyGeogCS(crs)
+        self.crs = crs
 
 
 def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:
@@ -135,6 +126,52 @@ def _projected_units(crs: CRS) -> str:
         if unit.is_convertible("m") and math.isclose(unit.convert(1, "m"), factor):
             return candidate
     return f"{factor!r} m"
+
+
+def _rotation(crs: CRS) -> dict[str, float]:
+    """Return the pole rotation of a rotated pole CRS, as RotatedGeogCS takes it."""
+    cf = crs.to_cf()
+    return {
+        "grid_north_pole_latitude": cf["grid_north_pole_latitude"],
+        "grid_north_pole_longitude": cf["grid_north_pole_longitude"],
+        "north_pole_grid_longitude": cf.get("north_pole_grid_longitude", 0.0),
+    }
+
+
+def coord_system(crs: CRS) -> CoordSystem:
+    """Return the iris coordinate system for a pyproj CRS.
+
+    Latitude-longitude and rotated pole CRSs must be an iris GeogCS or
+    RotatedGeogCS for iris to wrap longitudes and regrid in degrees, and a plain
+    one if an ellipsoid, or the WGS 84 datum, fully describes them. Anything
+    else is wrapped.
+
+    Raises:
+        ValueError: If a latitude-longitude or rotated pole CRS is not in
+            degrees, which iris requires.
+    """
+    cf = crs.to_cf()
+    mapping = cf.get("grid_mapping_name")
+    if mapping not in ("latitude_longitude", "rotated_latitude_longitude"):
+        return CartopyCS(crs)
+    if any(axis.unit_name != "degree" for axis in crs.axis_info):
+        msg = (
+            f"Latitude-longitude CRS {crs.name!r} must be in degrees, but has "
+            f"units {[axis.unit_name for axis in crs.axis_info]}."
+        )
+        raise ValueError(msg)
+    if not described_by_globe(crs):
+        if mapping == "latitude_longitude":
+            return CartopyGeogCS(crs)
+        return CartopyRotatedGeogCS(crs)
+    # Keep a WGS 84 datum, so iris shifts between it and other datums
+    if (datum := proj4_dict(base_geographic_crs(crs)).get("datum")) is not None:
+        geog_cs = GeogCS.from_datum(datum)
+    else:
+        geog_cs = GeogCS(cf["semi_major_axis"], cf["semi_minor_axis"])
+    if mapping == "latitude_longitude":
+        return geog_cs
+    return RotatedGeogCS(**_rotation(crs), ellipsoid=geog_cs)
 
 
 def to_cube(
