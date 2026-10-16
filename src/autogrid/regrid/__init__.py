@@ -6,6 +6,8 @@
 - sphere: unit vectors and distances on a spherical Earth.
 """
 
+from autogrid.regrid.grid_search import grid_to_points
+from autogrid.regrid.points import gaussian_mean, nearest_indices
 from autogrid.regrid.regridder import Method, Regridder
 
-__all__ = ["Method", "Regridder"]
+__all__ = ["Method", "Regridder", "gaussian_mean", "grid_to_points", "nearest_indices"]
