@@ -131,6 +131,16 @@ def test_grid_to_points_handles_tiny_source() -> None:
     np.testing.assert_array_equal(ix, [2, 0])
 
 
+def test_grid_to_points_wraps_non_circular_longitudes() -> None:
+    # Longitudes not spanning a full turn, so that the search from 170 must wrap
+    # across the dateline to find -179, which is nearer to 179
+    source = Grid([-179, -178, 150, 170], [0, 1], 4326)
+    assert not source.is_circular
+    iy, ix = grid_to_points(source, [0.0], [179.0])
+    np.testing.assert_array_equal(iy, [0])
+    np.testing.assert_array_equal(ix, [0])
+
+
 def test_grid_to_points_rejects_invalid_targets(latlon: Grid) -> None:
     with pytest.raises(ValueError, match="Target .* must all be finite"):
         grid_to_points(latlon, [0.0], [np.nan])

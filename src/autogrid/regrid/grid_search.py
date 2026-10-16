@@ -99,7 +99,7 @@ def _search(
         # valid area of the source CRS, are never nearest
         y = np.clip(iy[active, np.newaxis] + _NEIGHBOURS[:, 0], 0, ny - 1)
         x = ix[active, np.newaxis] + _NEIGHBOURS[:, 1]
-        x = x % nx if source.is_circular else np.clip(x, 0, nx - 1)
+        x = x % nx if source.is_geographic else np.clip(x, 0, nx - 1)
         d = ((point_vectors(source, y, x) - targets[active, np.newaxis]) ** 2).sum(-1)
         k = np.argmin(np.where(np.isnan(d), np.inf, d), axis=1)
         moved = k > 0
