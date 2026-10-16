@@ -6,6 +6,7 @@ from typing import Literal, get_args
 
 import numpy as np
 from iris.analysis import AreaWeighted, Linear, Nearest
+from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
@@ -45,6 +46,11 @@ class Regridder:
         return f"{type(self).__name__}({self.source!r} -> {self.target!r})"
 
     @cached_property
+    def _source_coords(self) -> tuple[DimCoord, ...]:
+        """Iris (y, x) coordinates of the source grid, shared by every source cube."""
+        return to_cube(self.source).dim_coords
+
+    @cached_property
     def outside_source(self) -> NDArray[np.bool_]:
         """Flag target points that lie outside the cells of the source grid.
 
@@ -81,7 +87,7 @@ class Regridder:
                     msg = f"Unknown regridding method {method!r}."
                     raise ValueError(msg)
             self._regridders[method] = scheme.regridder(
-                to_cube(self.source), to_cube(self.target)
+                to_cube(self.source, coords=self._source_coords), to_cube(self.target)
             )
         return self._regridders[method]
 
@@ -113,7 +119,9 @@ class Regridder:
             iy, ix = self.nearest_indices(method)
             result = data[..., iy, ix]
         else:
-            result = self._regridder(method)(to_cube(self.source, data)).data
+            result = self._regridder(method)(
+                to_cube(self.source, data, self._source_coords)
+            ).data
         result = np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
         result[..., self.outside_source] = np.nan
         return result
@@ -128,7 +136,7 @@ class Regridder:
         values as apply(data, method), except that target points outside the
         source grid take the value of the nearest source point at its edge
         rather than NaN, or an arbitrary source point if it has no nearest
-        source point at all. Use outside_source to mask these if needed.
+        source point at all.
 
         Args:
             method: "nearest" or "nearest_great_circle", as for apply.
@@ -155,7 +163,9 @@ class Regridder:
             # regridding copies exactly into each target point
             flat = np.arange(np.prod(self.source.shape), dtype=np.float64)
             flat = flat.reshape(self.source.shape)
-            result = self._regridder(method)(to_cube(self.source, flat)).data
+            result = self._regridder(method)(
+                to_cube(self.source, flat, self._source_coords)
+            ).data
             result = np.ma.filled(np.ma.masked_invalid(result), -1)
             # Points with no valid index can only be used if outside_source
             # already masks them, so point them at an arbitrary source point

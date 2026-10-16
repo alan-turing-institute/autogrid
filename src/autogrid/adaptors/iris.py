@@ -108,15 +108,21 @@ def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:
     )
 
 
-def to_cube(grid: Grid, data: ArrayLike | None = None) -> Cube:
-    """Build an iris cube on a Grid, with any leading dimensions of data."""
+def to_cube(
+    grid: Grid,
+    data: ArrayLike | None = None,
+    coords: tuple[DimCoord, ...] | None = None,
+) -> Cube:
+    """Build an iris cube on a Grid, with any leading dimensions of data.
+
+    Pass the (y, x) dim_coords of an earlier cube on the same Grid to share them
+    rather than rebuilding them, in which case they must not be modified.
+    """
     shape = grid.shape if data is None else np.shape(data)
     n_lead = len(shape) - 2
+    y, x = coords or (_dim_coord(grid, "y"), _dim_coord(grid, "x"))
     return Cube(
         data,
         shape=None if data is not None else shape,
-        dim_coords_and_dims=[
-            (_dim_coord(grid, "y"), n_lead),
-            (_dim_coord(grid, "x"), n_lead + 1),
-        ],
+        dim_coords_and_dims=[(y, n_lead), (x, n_lead + 1)],
     )
