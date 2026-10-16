@@ -25,7 +25,6 @@ def _assert_equally_near(
     target: Grid,
     got: tuple[np.ndarray, ...],
     want: tuple[np.ndarray, ...],
-    max_degrees: float = 180.0,
 ) -> None:
     # Compare distances rather than indices, as ties may be broken differently
     lat, lon = source.latitudes, source.longitudes
@@ -33,10 +32,7 @@ def _assert_equally_near(
         _haversine(target.latitudes, target.longitudes, lat[i], lon[i])
         for i in (got, want)
     )
-    near = want_distance <= np.deg2rad(max_degrees)
-    np.testing.assert_allclose(
-        got_distance[near], want_distance[near], rtol=0, atol=1e-12
-    )
+    np.testing.assert_allclose(got_distance, want_distance, rtol=0, atol=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -59,15 +55,27 @@ def _assert_equally_near(
 )
 def test_grid_to_points_matches_kd_tree(source: Grid, target: Grid) -> None:
     # Including target points outside the source grid, which are nearest its
-    # edge, and the antipode of the polar grids, but not those more than 90
-    # degrees from it, for which the edge can be roughly equidistant
+    # edge, and the antipode of the polar grids
     got = grid_to_points(source, target.latitudes, target.longitudes)
     want = nearest_indices(
         source.latitudes, source.longitudes, target.latitudes, target.longitudes
     )
     assert got[0].shape == got[1].shape == target.shape
     assert got[0].dtype == got[1].dtype == np.intp
-    _assert_equally_near(source, target, got, want, max_degrees=90.0)
+    _assert_equally_near(source, target, got, want)
+
+
+def test_grid_to_points_finds_nearest_corner_from_outside() -> None:
+    # A strip of the northern EASE grid, from which target points far to the
+    # south are nearest one end, though they project nearer the other
+    ease = build_ease2("north", "36p0km")
+    source = Grid(ease.x_points[100:367], ease.y_points[:27], ease.crs)
+    target = build_global_latlon(2.0)
+    got = grid_to_points(source, target.latitudes, target.longitudes)
+    want = nearest_indices(
+        source.latitudes, source.longitudes, target.latitudes, target.longitudes
+    )
+    _assert_equally_near(source, target, got, want)
 
 
 def test_grid_to_points_keeps_target_shape(latlon: Grid) -> None:
