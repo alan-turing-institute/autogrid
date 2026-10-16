@@ -2,10 +2,8 @@
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from pyproj import Transformer
 from scipy.spatial import KDTree
 
-from autogrid.crs import latlon_crs
 from autogrid.grids import Grid
 from autogrid.grids.axes import normalise_longitude
 from autogrid.sphere import check_points, unit_vectors
@@ -101,9 +99,7 @@ def indices_grid_to_points(
     """
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
     lats, lons = target_lats.ravel(), target_lons.ravel()
-    x, y = Transformer.from_crs(
-        latlon_crs(source.crs), source.crs, always_xy=True
-    ).transform(lons, lats)
+    x, y = source._from_latlon.transform(lons, lats)
     x = normalise_longitude(x, source.x_bounds, source.crs)
     iy = _nearest_index(source.y_points, y)
     ix = _nearest_index(source.x_points, x)
@@ -118,16 +114,15 @@ def indices_grid_to_points(
     )
     step = np.where(inside, 1, max(1, 1 << (max(ny, nx).bit_length() - 3)))
 
-    # Grid.latitudes and Grid.longitudes come from this transform, so
-    # distances match those of the KD-tree search exactly
-    to_lonlat = Transformer.from_crs(source.crs, latlon_crs(source.crs), always_xy=True)
     targets = unit_vectors(lats, lons)
 
     def distance(
         targets: NDArray[np.float64], iy: NDArray[np.intp], ix: NDArray[np.intp]
     ) -> NDArray[np.float64]:
         """Squared straight-line distance between unit vectors, as in a KD-tree."""
-        lon, lat = to_lonlat.transform(source.x_points[ix], source.y_points[iy])
+        # Grid.latitudes and Grid.longitudes come from this transform, so
+        # distances match those of the KD-tree search exactly
+        lon, lat = source._to_latlon.transform(source.x_points[ix], source.y_points[iy])
         vectors = unit_vectors(lat, lon).reshape(*iy.shape, 3)
         return ((vectors - targets) ** 2).sum(axis=-1)
 

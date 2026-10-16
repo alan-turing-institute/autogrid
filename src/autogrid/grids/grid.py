@@ -123,6 +123,16 @@ class Grid:
         return np.broadcast_to(self.y_points[:, np.newaxis], self.shape)
 
     @cached_property
+    def _from_latlon(self) -> Transformer:
+        """Transformer from longitude and latitude to the grid's x and y."""
+        return Transformer.from_crs(latlon_crs(self.crs), self.crs, always_xy=True)
+
+    @cached_property
+    def _to_latlon(self) -> Transformer:
+        """Transformer from the grid's x and y to longitude and latitude."""
+        return Transformer.from_crs(self.crs, latlon_crs(self.crs), always_xy=True)
+
+    @cached_property
     def x_bounds(self) -> NDArray[np.float64]:
         """x coordinate bounds for each grid cell, with shape (nx, 2)."""
         return guess_bounds(self.x_points)
@@ -147,9 +157,7 @@ class Grid:
             Tuple of (latitude, longitude) arrays in degrees, with the shape of
             the block of rows.
         """
-        lon, lat = Transformer.from_crs(
-            self.crs, latlon_crs(self.crs), always_xy=True
-        ).transform(self.x[rows], self.y[rows])
+        lon, lat = self._to_latlon.transform(self.x[rows], self.y[rows])
         return lat, lon
 
     @classmethod
