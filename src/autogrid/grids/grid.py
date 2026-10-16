@@ -5,7 +5,12 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
 
-from autogrid.crs import CRSLike, full_turn, latlon_crs
+from autogrid.crs import (
+    CRSLike,
+    from_lonlat_transformer,
+    full_turn,
+    to_lonlat_transformer,
+)
 from autogrid.crs.cartopy import projection
 from autogrid.grids.axes import check_axis_points, guess_bounds, normalise_longitude
 
@@ -105,8 +110,7 @@ class Grid:
     @cached_property
     def lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Return the longitude and latitude of each grid point, with shape (ny, nx)."""
-        lat, lon = self.latlon_slice(slice(None))
-        return lon, lat
+        return self.lonlat_slice(slice(None))
 
     @property
     def projection(self) -> ccrs.Projection:
@@ -119,14 +123,14 @@ class Grid:
         return (len(self.y_points), len(self.x_points))
 
     @cached_property
-    def trf_from_latlon(self) -> Transformer:
+    def trf_from_lonlat(self) -> Transformer:
         """Transformer from longitude and latitude to the grid's x and y."""
-        return Transformer.from_crs(latlon_crs(self.crs), self.crs, always_xy=True)
+        return from_lonlat_transformer(self.crs)
 
     @cached_property
-    def trf_to_latlon(self) -> Transformer:
+    def trf_to_lonlat(self) -> Transformer:
         """Transformer from the grid's x and y to longitude and latitude."""
-        return Transformer.from_crs(self.crs, latlon_crs(self.crs), always_xy=True)
+        return to_lonlat_transformer(self.crs)
 
     @cached_property
     def x(self) -> NDArray[np.float64]:
@@ -174,10 +178,10 @@ class Grid:
             return inside & np.isfinite(x)
         return inside & (x >= np.min(self.x_bounds)) & (x <= np.max(self.x_bounds))
 
-    def latlon_slice(
+    def lonlat_slice(
         self, rows: slice
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Latitude and longitude of the points in a block of rows.
+        """Longitude and latitude of the points in a block of rows.
 
         Unlike latitudes and longitudes, these are not cached, so a large grid
         can be processed a block at a time.
@@ -186,11 +190,10 @@ class Grid:
             rows: Slice of the rows of the grid.
 
         Returns:
-            Tuple of (latitude, longitude) arrays in degrees, with the shape of
+            Tuple of (longitude, latitude) arrays in degrees, with the shape of
             the block of rows.
         """
-        lon, lat = self.trf_to_latlon.transform(self.x[rows], self.y[rows])
-        return lat, lon
+        return self.trf_to_lonlat.transform(self.x[rows], self.y[rows])
 
     @classmethod
     def from_latlon(
@@ -233,9 +236,7 @@ class Grid:
             )
             raise ValueError(msg)
         crs = CRS.from_user_input(crs)
-        x, y = Transformer.from_crs(latlon_crs(crs), crs, always_xy=True).transform(
-            longitudes, latitudes
-        )
+        x, y = from_lonlat_transformer(crs).transform(longitudes, latitudes)
         if crs.is_geographic:
             # Start every row on the same branch as the first, e.g. 180 and -180,
             # then keep longitudes monotonic across the dateline, e.g. 179.5, -179.5

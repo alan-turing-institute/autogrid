@@ -9,7 +9,7 @@ import warnings
 from dataclasses import dataclass
 from typing import Any
 
-from pyproj import CRS
+from pyproj import CRS, Transformer
 
 # Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
 CRSLike = int | str | dict[str, Any] | CRS
@@ -32,7 +32,7 @@ def base_geographic_crs(crs: CRS) -> CRS:
     return base
 
 
-def latlon_crs(crs: CRS) -> CRS:
+def true_geographic_crs(crs: CRS) -> CRS:
     """Return a geographic CRS giving true latitude and longitude for a CRS.
 
     This is its base geographic CRS if that is in degrees east of Greenwich, so
@@ -41,6 +41,16 @@ def latlon_crs(crs: CRS) -> CRS:
     """
     base = base_geographic_crs(crs)
     return base if in_degrees(base) and prime_meridian_degrees(base) == 0 else WGS84
+
+
+def from_lonlat_transformer(crs: CRS) -> Transformer:
+    """Return a transformer from true longitude and latitude to a CRS's x and y."""
+    return Transformer.from_crs(true_geographic_crs(crs), crs, always_xy=True)
+
+
+def to_lonlat_transformer(crs: CRS) -> Transformer:
+    """Return a transformer from a CRS's x and y to true longitude and latitude."""
+    return Transformer.from_crs(crs, true_geographic_crs(crs), always_xy=True)
 
 
 @dataclass(frozen=True)

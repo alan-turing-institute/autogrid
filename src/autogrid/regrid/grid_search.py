@@ -74,7 +74,7 @@ def _search(
     indices are arbitrary.
     """
     lats, lons = target_lats.ravel(), target_lons.ravel()
-    x, y = source.trf_from_latlon.transform(lons, lats)
+    x, y = source.trf_from_lonlat.transform(lons, lats)
     x = normalise_longitude(x, source.x_bounds, source.crs)
     iy = nearest_index(source.y_points, y)
     ix = nearest_index(source.x_points, x)
@@ -149,9 +149,8 @@ def search_grid(
     for block in row_blocks(target):
         # Skip check_points, as _search handles the NaN latitudes and longitudes of
         # points beyond the valid area of the target CRS
-        iy[block], ix[block], outside[block] = _search(
-            source, *target.latlon_slice(block)
-        )
+        lons, lats = target.lonlat_slice(block)
+        iy[block], ix[block], outside[block] = _search(source, lats, lons)
     return iy, ix, outside
 
 
@@ -220,7 +219,7 @@ def point_vectors(
     Grid.latitudes and Grid.longitudes come from the same transform, so distances
     match those of a KD-tree over them exactly.
     """
-    lon, lat = grid.trf_to_latlon.transform(grid.x_points[ix], grid.y_points[iy])
+    lon, lat = grid.trf_to_lonlat.transform(grid.x_points[ix], grid.y_points[iy])
     return unit_vectors(lat, lon).reshape(*iy.shape, 3)
 
 

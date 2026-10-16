@@ -182,7 +182,7 @@ def test_search_grid_flags_outside_by_search_coordinates() -> None:
     x0, y0 = Transformer.from_crs(4326, 27700, always_xy=True).transform(edge, 52.5)
     target = Grid(x0 + np.arange(-500, 500, 20.0), [y0, y0 + 20], 27700)
     lats, lons = target.latitudes, target.longitudes
-    want = ~source.contains(*source.trf_from_latlon.transform(lons, lats))
+    want = ~source.contains(*source.trf_from_lonlat.transform(lons, lats))
     np.testing.assert_array_equal(search_grid(source, target)[2], want)
     shifted = Transformer.from_crs(27700, 4326, always_xy=True).transform(
         target.x, target.y
