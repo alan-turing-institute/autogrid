@@ -3,10 +3,10 @@ from typing import Any
 import numpy as np
 import pytest
 
-import autogrid.scattered
+import autogrid.regrid.scattered
 from autogrid import Grid
 from autogrid.grids import build_ease2
-from autogrid.scattered import points_to_points
+from autogrid.regrid.scattered import points_to_points
 from autogrid.sphere import EARTH_RADIUS_KM
 
 
@@ -78,7 +78,7 @@ def test_chunking_does_not_change_result(
     args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
     whole = points_to_points(*args)
     # Chunks of 7 target points, so the last chunk is partial
-    monkeypatch.setattr(autogrid.scattered, "_CHUNK_ELEMENTS", 7 * lat.size)
+    monkeypatch.setattr(autogrid.regrid.scattered, "_CHUNK_ELEMENTS", 7 * lat.size)
     np.testing.assert_allclose(points_to_points(*args), whole, rtol=1e-12, atol=1e-14)
 
 

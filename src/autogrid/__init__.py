@@ -1,5 +1,5 @@
 from autogrid.grids import Grid
-from autogrid.regridder import Regridder
+from autogrid.regrid import Regridder
 
 __all__ = [
     "Grid",

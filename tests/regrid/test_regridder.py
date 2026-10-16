@@ -2,11 +2,11 @@ import numpy as np
 import pytest
 from pyproj import Transformer
 
-import autogrid.nearest
+import autogrid.regrid.nearest
 from autogrid import Grid, Regridder
 from autogrid.grids import build_global_latlon
-from autogrid.nearest import indices_grid_to_grid, indices_points_to_points
-from autogrid.regridder import Method
+from autogrid.regrid.nearest import indices_grid_to_grid, indices_points_to_points
+from autogrid.regrid.regridder import Method
 
 
 def analytic(grid: Grid) -> np.ndarray:
@@ -118,9 +118,9 @@ def test_nearest_great_circle_indices_are_cached(
     latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = []
-    real = autogrid.nearest.indices_grid_to_grid
+    real = autogrid.regrid.nearest.indices_grid_to_grid
     monkeypatch.setattr(
-        autogrid.nearest,
+        autogrid.regrid.nearest,
         "indices_grid_to_grid",
         lambda *args: calls.append(args) or real(*args),
     )

@@ -11,10 +11,10 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
 
-from autogrid import nearest
 from autogrid.adaptors.iris import to_cube
 from autogrid.grids import Grid
 from autogrid.grids.axes import normalise_longitude
+from autogrid.regrid import nearest
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
 

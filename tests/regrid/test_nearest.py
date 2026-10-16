@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-import autogrid.nearest
+import autogrid.regrid.nearest
 from autogrid import Grid
 from autogrid.grids import build_ease2, build_global_latlon
-from autogrid.nearest import (
+from autogrid.regrid.nearest import (
     indices_grid_to_grid,
     indices_grid_to_points,
     indices_points_to_points,
@@ -171,7 +171,9 @@ def test_grid_to_grid_matches_points_in_blocks(
     latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # Blocks of a few rows that do not divide the target rows evenly
-    monkeypatch.setattr(autogrid.nearest, "_BLOCK_POINTS", 5 * south.shape[1] + 1)
+    monkeypatch.setattr(
+        autogrid.regrid.nearest, "_BLOCK_POINTS", 5 * south.shape[1] + 1
+    )
     got = indices_grid_to_grid(latlon, south)
     want = indices_grid_to_points(latlon, south.latitudes, south.longitudes)
     for g, w in zip(got, want, strict=True):
