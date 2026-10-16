@@ -171,4 +171,4 @@ def gaussian_mean(
 
     result[~np.isfinite(result)] = np.nan
     result = result.astype(np.result_type(values.dtype, np.float32))
-    return result.reshape(*leading_shape, *target_lats.shape)
+    return result.reshape((*leading_shape, *target_lats.shape))

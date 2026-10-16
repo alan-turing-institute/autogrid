@@ -217,6 +217,15 @@ def test_gaussian_mean_keeps_source_and_target_shapes(target: Grid) -> None:
     np.testing.assert_allclose(result, 1.0, rtol=1e-6)
 
 
+@pytest.mark.parametrize("max_distance_km", [None, 1000.0], ids=["dense", "sparse"])
+def test_gaussian_mean_keeps_scalar_target_shape(max_distance_km: float | None) -> None:
+    result = gaussian_mean(
+        [0.0], [0.0], [1.0], 0.0, 0.0, 100.0, max_distance_km=max_distance_km
+    )
+    assert result.shape == ()
+    np.testing.assert_allclose(result, 1.0)
+
+
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
