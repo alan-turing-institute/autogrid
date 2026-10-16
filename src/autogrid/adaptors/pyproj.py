@@ -36,6 +36,18 @@ def latlon_crs(crs: CRS) -> CRS:
     return base if in_degrees and prime_meridian_degrees(base) == 0 else WGS84
 
 
+def full_turn(crs: CRS) -> float:
+    """Return one full turn of longitude in a geographic CRS's own units.
+
+    This is 360 for a CRS in degrees, but e.g. 400 for EPSG:4807, in grads.
+    """
+    for axis in crs.axis_info:
+        if axis.direction in ("east", "west"):
+            return 2 * math.pi / float(axis.unit_conversion_factor)
+    msg = f"CRS {crs.name!r} has no longitude axis."
+    raise ValueError(msg)
+
+
 def prime_meridian_degrees(crs: CRS) -> float:
     """Return the longitude of the CRS's prime meridian east of Greenwich, in degrees."""
     pm = crs.prime_meridian

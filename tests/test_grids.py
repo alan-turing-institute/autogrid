@@ -306,3 +306,10 @@ def test_projection_keeps_datum() -> None:
     assert not isinstance(projection, ccrs.PlateCarree)
     lon, _ = ccrs.CRS("EPSG:4326").transform_point(-2.0, 52.0, projection)
     assert abs(lon + 2.0) > 1e-3
+
+
+def test_from_latlon_unwraps_grads_across_dateline() -> None:
+    # EPSG:4807 is in grads relative to Paris, so its dateline is at 200 grads
+    grid = Grid([198.0, 199.0, 201.0, 202.0], [50.0, 51.0], "EPSG:4807")
+    rebuilt = Grid.from_latlon(grid.latitudes, grid.longitudes, "EPSG:4807")
+    np.testing.assert_allclose(np.diff(rebuilt.x_points), [1.0, 2.0, 1.0], atol=1e-6)

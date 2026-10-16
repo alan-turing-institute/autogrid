@@ -7,7 +7,7 @@ from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
 
 from autogrid.adaptors import cartopy_projection
-from autogrid.adaptors.pyproj import latlon_crs
+from autogrid.adaptors.pyproj import full_turn, latlon_crs
 
 # Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
 CRSLike = int | str | dict[str, Any] | CRS
@@ -79,8 +79,10 @@ class Grid:
     @property
     def is_circular(self) -> bool:
         """Whether the x axis wraps around the globe, as for global longitudes."""
+        if not self.is_geographic:
+            return False
         extent = self.x_bounds[-1, 1] - self.x_bounds[0, 0]
-        return self.is_geographic and bool(np.isclose(abs(extent), 360.0))
+        return bool(np.isclose(abs(extent), full_turn(self.crs)))
 
     @property
     def is_geographic(self) -> bool:
@@ -181,8 +183,9 @@ class Grid:
         if crs.is_geographic:
             # Start every row on the same branch as the first, e.g. 180 and -180,
             # then keep longitudes monotonic across the dateline, e.g. 179.5, -179.5
-            x[:, 0] -= 360 * np.round((x[:, 0] - x[0, 0]) / 360)
-            x = np.unwrap(x, period=360, axis=1)
+            turn = full_turn(crs)
+            x[:, 0] -= turn * np.round((x[:, 0] - x[0, 0]) / turn)
+            x = np.unwrap(x, period=turn, axis=1)
         x_points, y_points = x.mean(axis=0), y.mean(axis=1)
         spacing = min(np.abs(np.diff(x_points)).min(), np.abs(np.diff(y_points)).min())
         deviation = max(

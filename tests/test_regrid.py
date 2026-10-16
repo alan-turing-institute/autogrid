@@ -262,3 +262,18 @@ def test_regrid_rejects_latlon_not_in_degrees() -> None:
     source = Grid(np.arange(0, 10.0), np.arange(40, 50.0), "EPSG:4807")
     with pytest.raises(ValueError, match="must be in degrees"):
         Regridder(source, build_global_latlon(1.0)).apply(np.zeros(source.shape))
+
+
+def test_outside_source_handles_grads() -> None:
+    # EPSG:4807 is in grads relative to Paris, so a full turn of longitude is 400
+    # The source spans 45 to 355 grads, so -50 grads (350) is inside it but
+    # -30 grads (370) is not
+    source = Grid(np.arange(50, 351, 10.0), np.arange(-50, 51, 10.0), "EPSG:4807")
+    target = Grid([-50.0, -30.0], [0.0, 10.0], "EPSG:4807")
+    outside = Regridder(source, target).outside_source
+    np.testing.assert_array_equal(outside, [[False, True], [False, True]])
+
+
+def test_global_grads_grid_is_circular() -> None:
+    grid = Grid(np.arange(0, 400, 10.0) + 5, np.arange(-95, 100, 10.0), "EPSG:4807")
+    assert grid.is_circular

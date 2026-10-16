@@ -12,6 +12,7 @@ from pyproj import Transformer
 
 from autogrid import nearest
 from autogrid.adaptors.iris import to_cube
+from autogrid.adaptors.pyproj import full_turn
 from autogrid.grid import Grid
 
 NearestMethod = Literal["nearest", "nearest_great_circle"]
@@ -60,7 +61,7 @@ class Regridder:
         if source.is_circular:
             return outside
         if source.is_geographic:
-            x = x_lo + (x - x_lo) % 360
+            x = x_lo + (x - x_lo) % full_turn(source.crs)
         return outside | (x < x_lo) | (x > x_hi)
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:
