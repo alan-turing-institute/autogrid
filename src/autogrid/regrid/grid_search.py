@@ -12,7 +12,7 @@ from autogrid.grids.axes import normalise_longitude
 from autogrid.regrid.sphere import check_points, unit_vectors
 
 # Largest number of target points whose latitudes and longitudes are held at
-# once by grid_to_grid
+# once by grid_to_grid and outside_grid
 _BLOCK_POINTS = 2**22
 
 # Offsets of the eight neighbours of a grid cell, as (row, column)
@@ -122,11 +122,32 @@ def grid_to_grid(
     """
     iy = np.empty(target.shape, dtype=np.intp)
     ix = np.empty(target.shape, dtype=np.intp)
-    rows = max(1, _BLOCK_POINTS // target.shape[1])
-    for start in range(0, target.shape[0], rows):
-        block = slice(start, start + rows)
+    for block in _row_blocks(target):
         iy[block], ix[block] = grid_to_points(source, *target.latlon_slice(block))
     return iy, ix
+
+
+def outside_grid(source: Grid, target: Grid) -> NDArray[np.bool_]:
+    """Flag target grid points that lie outside the cells of the source grid.
+
+    Target points reach the source CRS through their own latitudes and
+    longitudes, as in grid_to_grid, so a point is outside exactly when its
+    search starts outside the source grid. As there, no datum shift is applied
+    between the grids, and the target is processed a block of rows at a time.
+
+    Args:
+        source: Grid of the source points.
+        target: Grid of the target points.
+
+    Returns:
+        A boolean array with the target grid shape (ny, nx).
+    """
+    outside = np.empty(target.shape, dtype=np.bool_)
+    for block in _row_blocks(target):
+        lats, lons = target.latlon_slice(block)
+        x, y = source.trf_from_latlon.transform(lons, lats)
+        outside[block] = ~source.contains(x, y)
+    return outside
 
 
 def _nearest_index(
@@ -138,3 +159,9 @@ def _nearest_index(
     upper = np.clip(np.searchsorted(points, values), 1, len(points) - 1)
     nearer_lower = values - points[upper - 1] < points[upper] - values
     return np.where(nearer_lower, upper - 1, upper)
+
+
+def _row_blocks(grid: Grid) -> list[slice]:
+    """Blocks of rows of a grid, each with at most about _BLOCK_POINTS points."""
+    rows = max(1, _BLOCK_POINTS // grid.shape[1])
+    return [slice(start, start + rows) for start in range(0, grid.shape[0], rows)]

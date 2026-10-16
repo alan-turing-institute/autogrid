@@ -9,7 +9,6 @@ from iris.analysis import AreaWeighted, Linear, Nearest
 from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
-from pyproj import Transformer
 
 from autogrid.adaptors.iris import to_cube
 from autogrid.grids import Grid
@@ -54,14 +53,13 @@ class Regridder:
     def outside_source(self) -> NDArray[np.bool_]:
         """Flag for target points that lie outside the cells of the source grid.
 
+        Target points are compared with the source grid through each grid's
+        own latitudes and longitudes, as in the "nearest_great_circle" search.
+
         Returns:
             A boolean array with the target grid shape (ny, nx).
         """
-        source, target = self.source, self.target
-        x, y = Transformer.from_crs(target.crs, source.crs, always_xy=True).transform(
-            target.x, target.y
-        )
-        return ~source.contains(x, y)
+        return grid_search.outside_grid(self.source, self.target)
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:
         """Return the cached iris regridder for a method, building it if needed."""
@@ -69,7 +67,7 @@ class Regridder:
             match method:
                 # Extrapolation only fills the half cell between the outermost
                 # source points and the source grid edge: anything further out
-                # is masked by outside_source
+                # is masked by `outside_source`.
                 case "linear":
                     scheme = Linear(extrapolation_mode="extrapolate")
                 case "nearest":
