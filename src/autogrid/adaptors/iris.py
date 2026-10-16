@@ -11,8 +11,8 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike
 from pyproj import CRS
 
-from autogrid.adaptors.cartopy import cartopy_projection, described_by_globe
-from autogrid.crs import prime_meridian_degrees, proj4_dict
+from autogrid.adaptors.cartopy import cartopy_projection
+from autogrid.crs import described_by_globe, prime_meridian_degrees, proj4_dict
 from autogrid.grids.grid import Grid
 
 
