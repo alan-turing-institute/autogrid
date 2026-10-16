@@ -57,9 +57,15 @@ class Grid:
         )
 
     def __hash__(self) -> int:
+        return self._hash
+
+    @cached_property
+    def _hash(self) -> int:
+        # The CRS is left out: == compares CRSs by equivalence, which no cheap
+        # CRS key (WKT, EPSG code) respects. Grids differing only in CRS
+        # collide, and __eq__ separates them.
         return hash(
             (
-                self.crs.to_epsg(),
                 # Adding 0.0 maps -0.0 to 0.0
                 (self.x_points + 0.0).tobytes(),
                 (self.y_points + 0.0).tobytes(),

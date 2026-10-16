@@ -32,6 +32,14 @@ def test_equivalent_crs_grids_hash_equal() -> None:
     assert hash(a) == hash(b)
 
 
+def test_grids_differing_only_in_crs_are_distinct_keys() -> None:
+    rotated = "+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=37.5 +lon_0=357.5"
+    a = Grid([0.0, 1.0], [0.0, 1.0], rotated)
+    b = Grid([0.0, 1.0], [0.0, 1.0], PARIS)
+    c = Grid([0.0, 1.0], [0.0, 1.0], 4326)
+    assert len({a, b, c}) == 3
+
+
 def test_name_is_ignored_by_equality() -> None:
     a = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="a")
     b = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="b")
