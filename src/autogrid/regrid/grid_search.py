@@ -4,6 +4,8 @@ This walks the source grid from a first guess in its own CRS, rather than
 building a KD-tree over all of its points as points.nearest_indices does.
 """
 
+from functools import lru_cache
+
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
@@ -85,20 +87,7 @@ def _search(
     outside = ~source.contains(x, y, prenormalised=True)
     from_edge = outside & searchable
     if from_edge.any():
-        # Get the indices of the points on the edge of the grid
-        rows, cols = np.arange(ny), np.arange(nx)
-        edge_iy = np.concatenate(
-            [np.zeros_like(cols), np.full_like(cols, ny - 1), rows, rows]
-        )
-        edge_ix = np.concatenate(
-            [cols, cols, np.zeros_like(rows), np.full_like(rows, nx - 1)]
-        )
-        # Build a KD-tree over the edge points that have a latitude and longitude, and
-        # find the nearest edge point to each
-        vectors = point_vectors(source, edge_iy, edge_ix)
-        valid = np.isfinite(vectors).all(-1)
-        edge_iy, edge_ix = edge_iy[valid], edge_ix[valid]
-        tree = KDTree(vectors[valid])
+        edge_iy, edge_ix, tree = edge_tree(source)
         _, k = tree.query(targets[from_edge], workers=-1)
         iy[from_edge], ix[from_edge] = edge_iy[k], edge_ix[k]
 
@@ -164,6 +153,27 @@ def search_grid(
             source, *target.latlon_slice(block)
         )
     return iy, ix, outside
+
+
+# Cached, as search_grid searches from the edge of the same source for each block of
+# target rows
+@lru_cache(maxsize=8)
+def edge_tree(source: Grid) -> tuple[NDArray[np.intp], NDArray[np.intp], KDTree]:
+    """KD-tree over the edge points of a grid that have a latitude and longitude.
+
+    Returns:
+        Tuple of (iy, ix, tree), giving the row and column of each point in the tree.
+    """
+    ny, nx = source.shape
+    rows, cols = np.arange(ny), np.arange(nx)
+    iy = np.concatenate([np.zeros_like(cols), np.full_like(cols, ny - 1), rows, rows])
+    ix = np.concatenate([cols, cols, np.zeros_like(rows), np.full_like(rows, nx - 1)])
+    vectors = point_vectors(source, iy, ix)
+    valid = np.isfinite(vectors).all(-1)
+    # Read-only, as callers share them through the cache
+    iy, ix = iy[valid], ix[valid]
+    iy.flags.writeable = ix.flags.writeable = False
+    return iy, ix, KDTree(vectors[valid])
 
 
 def nearest_index(

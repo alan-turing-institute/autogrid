@@ -79,7 +79,7 @@ class Grid:
             f"crs={self.crs.to_string()!r})"
         )
 
-    @property
+    @cached_property
     def is_circular(self) -> bool:
         """Whether the x axis wraps around the globe, as for global longitudes."""
         if not self.is_geographic:

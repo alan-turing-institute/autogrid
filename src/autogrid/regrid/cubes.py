@@ -189,21 +189,17 @@ def coord_system(crs: CRS) -> CoordSystem:
     return RotatedGeogCS(**_rotation(cf), ellipsoid=geog_cs)
 
 
-def sample_transformer(source: CRS, target: CRS) -> Transformer | None:
+def sample_transformer(source: CoordSystem, target: CoordSystem) -> Transformer | None:
     """Return the transformer iris regridders use to find target points in a source CRS.
 
     Iris transforms target points with the cartopy CRSs of the two coordinate
     systems, applying any datum shift between them, or not at all if the
     coordinate systems are equal, in which case this returns None.
     """
-    # Equal CRSs give equal coordinate systems, even where iris can't build one
     if source == target:
         return None
-    source_cs, target_cs = coord_system(source), coord_system(target)
-    if source_cs == target_cs:
-        return None
     return Transformer.from_crs(
-        target_cs.as_cartopy_crs(), source_cs.as_cartopy_crs(), always_xy=True
+        target.as_cartopy_crs(), source.as_cartopy_crs(), always_xy=True
     )
 
 

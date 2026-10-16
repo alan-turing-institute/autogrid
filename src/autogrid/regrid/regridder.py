@@ -45,6 +45,11 @@ class Regridder:
         return to_cube(self.source).dim_coords
 
     @cached_property
+    def _target_coords(self) -> tuple[DimCoord, ...]:
+        """Iris (y, x) coordinates of the target grid, shared by every method."""
+        return to_cube(self.target).dim_coords
+
+    @cached_property
     def _great_circle(
         self,
     ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_]]:
@@ -66,11 +71,13 @@ class Regridder:
         Returns:
             A boolean array with the target grid shape (ny, nx).
         """
-        return grid_search.outside_grid(
-            self.source,
-            self.target,
-            sample_transformer(self.source.crs, self.target.crs),
-        )
+        # Equal CRSs give equal coordinate systems, even where iris can't build one
+        transformer = None
+        if self.source.crs != self.target.crs:
+            transformer = sample_transformer(
+                self._source_coords[0].coord_system, self._target_coords[0].coord_system
+            )
+        return grid_search.outside_grid(self.source, self.target, transformer)
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:
         """Return the cached iris regridder for a method, building it if needed."""
@@ -89,7 +96,8 @@ class Regridder:
                     msg = f"Unknown regridding method {method!r}."
                     raise ValueError(msg)
             self._regridders[method] = scheme.regridder(
-                to_cube(self.source, coords=self._source_coords), to_cube(self.target)
+                to_cube(self.source, coords=self._source_coords),
+                to_cube(self.target, coords=self._target_coords),
             )
         return self._regridders[method]
 
