@@ -74,6 +74,23 @@ def full_turn(crs: CRS) -> float:
     raise ValueError(msg)
 
 
+def metres_per_unit(crs: CRS) -> float:
+    """Return the length of a projected CRS's linear unit, in metres.
+
+    Raises:
+        ValueError: If the axes have different units.
+    """
+    factors = {float(axis.unit_conversion_factor) for axis in crs.axis_info}
+    if len(factors) != 1:
+        msg = (
+            f"Projected CRS {crs.name!r} must have the same units on each axis, "
+            f"but has units {[axis.unit_name for axis in crs.axis_info]}."
+        )
+        raise ValueError(msg)
+    (factor,) = factors
+    return factor
+
+
 def prime_meridian_degrees(crs: CRS) -> float:
     """Return the longitude of the CRS's prime meridian east of Greenwich, in degrees."""
     pm = crs.prime_meridian

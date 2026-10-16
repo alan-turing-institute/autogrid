@@ -16,6 +16,7 @@ from autogrid.crs import (
     base_geographic_crs,
     described_by_ellipsoid,
     in_degrees,
+    metres_per_unit,
     prime_meridian_degrees,
     proj4_datum,
 )
@@ -125,14 +126,7 @@ def _projected_units(crs: CRS) -> str:
     Raises:
         ValueError: If the axes have different units.
     """
-    factors = {float(axis.unit_conversion_factor) for axis in crs.axis_info}
-    if len(factors) != 1:
-        msg = (
-            f"Projected CRS {crs.name!r} must have the same units on each axis, "
-            f"but has units {[axis.unit_name for axis in crs.axis_info]}."
-        )
-        raise ValueError(msg)
-    (factor,) = factors
+    factor = metres_per_unit(crs)
     name = crs.axis_info[0].unit_name
     for candidate in (name, name.replace(" ", "_")):
         try:

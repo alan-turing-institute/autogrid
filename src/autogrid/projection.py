@@ -3,7 +3,7 @@
 import cartopy.crs as ccrs
 from pyproj import CRS
 
-from autogrid.crs import described_by_ellipsoid, full_turn
+from autogrid.crs import described_by_ellipsoid, full_turn, metres_per_unit
 
 
 def cartopy_projection(crs: CRS) -> ccrs.Projection:
@@ -11,8 +11,10 @@ def cartopy_projection(crs: CRS) -> ccrs.Projection:
 
     Latitude-longitude, Lambert azimuthal equal area (as used by EASE-Grid 2.0)
     and rotated pole CRSs use cartopy's own classes, which give sensible plot
-    limits, if a cartopy Globe can describe them. Anything else is looked up by
-    EPSG code, or wrapped if it has none.
+    limits, if a cartopy Globe can describe them. Cartopy's Lambert azimuthal
+    equal area class works in metres, so for other linear units the CRS is
+    wrapped with the same limits converted to its own units. Anything else is
+    looked up by EPSG code, or wrapped if it has none.
     """
     cf = crs.to_cf()
     globe = ccrs.Globe(
@@ -23,13 +25,22 @@ def cartopy_projection(crs: CRS) -> ccrs.Projection:
         case "latitude_longitude":
             return ccrs.PlateCarree(globe=globe)
         case "lambert_azimuthal_equal_area":
-            return ccrs.LambertAzimuthalEqualArea(
+            # False easting and northing are given in the CRS's own units
+            metres = metres_per_unit(crs)
+            laea = ccrs.LambertAzimuthalEqualArea(
                 central_longitude=cf["longitude_of_projection_origin"],
                 central_latitude=cf["latitude_of_projection_origin"],
-                false_easting=cf["false_easting"],
-                false_northing=cf["false_northing"],
+                false_easting=cf["false_easting"] * metres,
+                false_northing=cf["false_northing"] * metres,
                 globe=globe,
             )
+            if metres == 1.0:
+                return laea
+            projection = ccrs.Projection(crs)
+            limits = (*laea.x_limits, *laea.y_limits)
+            projection.bounds = tuple(limit / metres for limit in limits)
+            projection.threshold = laea.threshold / metres
+            return projection
         case "rotated_latitude_longitude":
             return ccrs.RotatedPole(
                 pole_longitude=cf["grid_north_pole_longitude"],
