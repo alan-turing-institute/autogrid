@@ -67,7 +67,9 @@ def _search(
     """As grid_to_points for checked targets, also flagging those outside the source.
 
     A target is outside when it starts its search outside the cells of the
-    source grid.
+    source grid. Targets with no latitude and longitude, such as those beyond the
+    valid area of the target CRS, are outside and are not searched, so their
+    indices are arbitrary.
     """
     lats, lons = target_lats.ravel(), target_lons.ravel()
     x, y = source.trf_from_latlon.transform(lons, lats)
@@ -76,11 +78,13 @@ def _search(
     ix = nearest_index(source.x_points, x)
     ny, nx = source.shape
     targets = unit_vectors(lats, lons)
+    searchable = np.isfinite(targets).all(-1)
     # The nearest point to one outside the grid is usually on its edge, where a search
     # from the nearest point in the source CRS can stop at the wrong corner, so start
     # from the nearest edge point instead
     outside = ~source.contains(x, y, prenormalised=True)
-    if outside.any():
+    from_edge = outside & searchable
+    if from_edge.any():
         # Get the indices of the points on the edge of the grid
         rows, cols = np.arange(ny), np.arange(nx)
         edge_iy = np.concatenate(
@@ -95,10 +99,10 @@ def _search(
         valid = np.isfinite(vectors).all(-1)
         edge_iy, edge_ix = edge_iy[valid], edge_ix[valid]
         tree = KDTree(vectors[valid])
-        _, k = tree.query(targets[outside], workers=-1)
-        iy[outside], ix[outside] = edge_iy[k], edge_ix[k]
+        _, k = tree.query(targets[from_edge], workers=-1)
+        iy[from_edge], ix[from_edge] = edge_iy[k], edge_ix[k]
 
-    active = np.arange(lats.size)
+    active = np.flatnonzero(searchable)
     while len(active):
         # Move each active point to whichever of its cell and eight neighbours is
         # nearest, as squared straight-line distance in a KD-tree, until that is its
@@ -154,7 +158,8 @@ def search_grid(
     ix = np.empty(target.shape, dtype=np.intp)
     outside = np.empty(target.shape, dtype=np.bool_)
     for block in row_blocks(target):
-        # Grid latitudes and longitudes are always finite, so need no checks
+        # Skip check_points, as _search handles the NaN latitudes and longitudes of
+        # points beyond the valid area of the target CRS
         iy[block], ix[block], outside[block] = _search(
             source, *target.latlon_slice(block)
         )

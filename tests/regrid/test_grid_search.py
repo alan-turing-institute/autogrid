@@ -81,6 +81,28 @@ def test_grid_to_points_avoids_cells_without_latlon() -> None:
     assert np.isfinite(source.latitudes[iy, ix]).all()
 
 
+def test_search_grid_flags_targets_without_latlon_as_outside() -> None:
+    # A north polar target grid reaching beyond the valid area of its projection, so
+    # that its corner cells have no latitude or longitude
+    points = np.arange(-15_000_000, 15_000_001, 300_000.0)
+    target = Grid(points, points[::-1], "EPSG:6931")
+    source = build_global_latlon(5.0)
+    no_latlon = np.isnan(target.latitudes)
+    assert no_latlon.any()
+    iy, ix, outside = search_grid(source, target)
+    assert outside[no_latlon].all()
+    assert not outside[~no_latlon].any()
+    lat, lon = target.latitudes[~no_latlon], target.longitudes[~no_latlon]
+    want = nearest_indices(source.latitudes, source.longitudes, lat, lon)
+    got = iy[~no_latlon], ix[~no_latlon]
+    # Compare distances rather than indices, as ties may be broken differently
+    got_distance, want_distance = (
+        _haversine(lat, lon, source.latitudes[i], source.longitudes[i])
+        for i in (got, want)
+    )
+    np.testing.assert_allclose(got_distance, want_distance, rtol=0, atol=1e-12)
+
+
 def test_grid_to_points_finds_nearest_corner_from_outside() -> None:
     # A strip of the northern EASE grid, from which target points far to the
     # south are nearest one end, though they project nearer the other
