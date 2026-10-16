@@ -6,6 +6,9 @@ from typing import Any
 
 from pyproj import CRS
 
+# Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
+CRSLike = int | str | dict[str, Any] | CRS
+
 WGS84 = CRS.from_epsg(4326)
 
 

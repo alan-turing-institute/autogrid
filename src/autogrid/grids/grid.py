@@ -1,5 +1,4 @@
 from functools import cached_property
-from typing import Any
 
 import cartopy.crs as ccrs
 import numpy as np
@@ -7,11 +6,8 @@ from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
 
 from autogrid.adaptors import cartopy_projection
-from autogrid.adaptors.pyproj import full_turn, latlon_crs
+from autogrid.crs import CRSLike, full_turn, latlon_crs
 from autogrid.grids.axes import check_axis_points, guess_bounds
-
-# Anything pyproj.CRS.from_user_input accepts, e.g. "EPSG:6931", 6931 or a CRS
-CRSLike = int | str | dict[str, Any] | CRS
 
 
 class Grid:

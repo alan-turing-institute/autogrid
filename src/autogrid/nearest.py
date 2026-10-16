@@ -5,7 +5,7 @@ from numpy.typing import ArrayLike, NDArray
 from pyproj import Transformer
 from scipy.spatial import KDTree
 
-from autogrid.adaptors.pyproj import latlon_crs
+from autogrid.crs import latlon_crs
 from autogrid.grids import Grid
 from autogrid.grids.axes import normalise_longitude
 from autogrid.sphere import check_points, unit_vectors

@@ -5,33 +5,10 @@ from numpy.typing import ArrayLike, NDArray
 from scipy.sparse import csr_array
 from scipy.spatial import KDTree
 
-from autogrid.grids import Grid
 from autogrid.sphere import check_points, chord_to_km, km_to_chord, unit_vectors
 
 # Largest number of (target, source) weights held in memory at once
 _CHUNK_ELEMENTS = 2**24
-
-
-def points_to_grid(
-    source_lats: ArrayLike,
-    source_lons: ArrayLike,
-    values: ArrayLike,
-    target_grid: Grid,
-    distance_scale_km: float,
-    min_weight: float = 1e-10,
-    max_distance_km: float | None = None,
-) -> NDArray[np.floating]:
-    """Interpolate scattered observations onto a Grid with Gaussian weights."""
-    return points_to_points(
-        source_lats,
-        source_lons,
-        values,
-        target_grid.latitudes,
-        target_grid.longitudes,
-        distance_scale_km,
-        min_weight,
-        max_distance_km,
-    )
 
 
 def points_to_points(

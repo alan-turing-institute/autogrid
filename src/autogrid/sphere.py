@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-# Mean Earth radius in km, as used by the haversine package
+# Mean Earth radius in km
 EARTH_RADIUS_KM = 6371.0088
 
 

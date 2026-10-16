@@ -5,7 +5,7 @@ import math
 import cartopy.crs as ccrs
 from pyproj import CRS
 
-from autogrid.adaptors.pyproj import (
+from autogrid.crs import (
     base_geographic_crs,
     prime_meridian_degrees,
     proj4_dict,

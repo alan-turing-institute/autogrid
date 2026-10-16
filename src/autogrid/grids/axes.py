@@ -2,7 +2,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS
 
-from autogrid.adaptors.pyproj import full_turn
+from autogrid.crs import full_turn
 
 
 def check_axis_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:

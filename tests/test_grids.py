@@ -6,9 +6,9 @@ import pytest
 from pyproj import CRS
 
 from autogrid import Grid
+from autogrid.crs import CRSLike
 from autogrid.grids import build_ease2, build_global_latlon
 from autogrid.grids.ease2 import Region
-from autogrid.grids.grid import CRSLike
 
 
 def test_latlon_grid() -> None:

@@ -49,8 +49,6 @@ class Regridder:
     @cached_property
     def _great_circle_indices(self) -> tuple[NDArray[np.intp], NDArray[np.intp]]:
         """Source (iy, ix) of the nearest source point to each target point."""
-        # Search the Grids themselves, rather than rebuilding Grids from iris
-        # cubes, which can lose CRS detail
         return nearest.indices_grid_to_grid(self.source, self.target)
 
     @cached_property
