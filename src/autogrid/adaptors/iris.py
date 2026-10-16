@@ -1,10 +1,11 @@
 """Convert autogrid objects to iris objects."""
 
-from functools import cache
+import math
 from typing import Literal
 
 import cartopy.crs as ccrs
 import numpy as np
+from cf_units import Unit
 from iris.coord_systems import CoordSystem, GeogCS
 from iris.coords import DimCoord
 from iris.cube import Cube
@@ -16,7 +17,7 @@ from autogrid.crs import described_by_globe, prime_meridian_degrees, proj4_dict
 from autogrid.grids.grid import Grid
 
 
-class _CartopyMixin:
+class CartopyMixin:
     """Delegate an iris coordinate system to cartopy, keeping the full CRS.
 
     Iris only needs a coordinate system to provide cartopy CRSs, so this works
@@ -35,7 +36,7 @@ class _CartopyMixin:
         return f"{type(self).__name__}({self.crs.to_string()!r})"
 
 
-class CartopyCS(_CartopyMixin, CoordSystem):
+class CartopyCS(CartopyMixin, CoordSystem):
     """An iris coordinate system for any CRS. Iris cannot save it to netCDF."""
 
     def __init__(self, crs: CRS) -> None:
@@ -43,7 +44,7 @@ class CartopyCS(_CartopyMixin, CoordSystem):
         self.grid_mapping_name = crs.to_cf().get("grid_mapping_name", "unknown")  # ty: ignore[invalid-attribute-access]  # pyright: ignore[reportAttributeAccessIssue]
 
 
-class CartopyGeogCS(_CartopyMixin, GeogCS):
+class CartopyGeogCS(CartopyMixin, GeogCS):
     """An iris GeogCS for latitude-longitude CRSs that an ellipsoid can't describe.
 
     A plain GeogCS transforms with only its ellipsoid, which would drop the
@@ -60,7 +61,6 @@ class CartopyGeogCS(_CartopyMixin, GeogCS):
         self.crs = crs
 
 
-@cache
 def coord_system(crs: CRS) -> CoordSystem:
     """Return the iris coordinate system for a pyproj CRS.
 
@@ -96,7 +96,8 @@ def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:
     elif grid.is_geographic:
         name, units = "longitude" if axis == "x" else "latitude", "degrees"
     else:
-        name, units = f"projection_{axis}_coordinate", "m"
+        name = f"projection_{axis}_coordinate"
+        units = _projected_units(grid.crs)
     return DimCoord(
         grid.x_points if axis == "x" else grid.y_points,
         standard_name=name,
@@ -106,6 +107,34 @@ def _dim_coord(grid: Grid, axis: Literal["x", "y"]) -> DimCoord:
         # Mark global longitudes as circular so regridders wrap correctly
         circular=axis == "x" and grid.is_circular,
     )
+
+
+def _projected_units(crs: CRS) -> str:
+    """Return the units of a projected CRS's axes, as iris understands them.
+
+    Uses the CRS's own unit name where iris recognises it, e.g. "metre" or
+    "US_survey_foot", and otherwise its length in metres, e.g. "0.30479841 m".
+
+    Raises:
+        ValueError: If the axes have different units.
+    """
+    factors = {float(axis.unit_conversion_factor) for axis in crs.axis_info}
+    if len(factors) != 1:
+        msg = (
+            f"Projected CRS {crs.name!r} must have the same units on each axis, "
+            f"but has units {[axis.unit_name for axis in crs.axis_info]}."
+        )
+        raise ValueError(msg)
+    (factor,) = factors
+    name = crs.axis_info[0].unit_name
+    for candidate in (name, name.replace(" ", "_")):
+        try:
+            unit = Unit(candidate)
+        except ValueError:
+            continue
+        if unit.is_convertible("m") and math.isclose(unit.convert(1, "m"), factor):
+            return candidate
+    return f"{factor!r} m"
 
 
 def to_cube(
