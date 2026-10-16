@@ -1,3 +1,5 @@
+from typing import Any
+
 import cartopy.crs as ccrs
 import numpy as np
 import pytest
@@ -39,7 +41,8 @@ def test_equal_grids_hash_equal() -> None:
     lat = np.arange(-89.5, 90, 1.0)
     cache = {build_global_latlon(1.0): "cached"}
     assert cache[Grid(lon, lat, "EPSG:4326")] == "cached"
-    assert hash(Grid([0.0], [0.0], 4326)) == hash(Grid([-0.0], [0.0], 4326))
+    a = Grid([0.0, 1.0], [0.0, 1.0], 4326)
+    assert hash(a) == hash(Grid([-0.0, 1.0], [0.0, 1.0], 4326))
 
 
 def test_equivalent_crs_grids_hash_equal() -> None:
@@ -187,6 +190,25 @@ def test_from_latlon_rejects_bad_shapes(lats: np.ndarray, lons: np.ndarray) -> N
 def test_from_latlon_rejects_too_few_points(shape: tuple[int, int]) -> None:
     with pytest.raises(ValueError, match="At least two rows and two columns"):
         Grid.from_latlon(np.zeros(shape), np.zeros(shape), "EPSG:4326")
+
+
+@pytest.mark.parametrize(
+    ("points", "match"),
+    [
+        ([5.0], "at least two points"),
+        ([], "at least two points"),
+        ([[0.0, 1.0], [2.0, 3.0]], "1D array"),
+        ([0.0, np.nan, 2.0], "finite"),
+        ([0.0, np.inf], "finite"),
+        ([0.0, 2.0, 1.0], "strictly increasing or strictly decreasing"),
+        ([0.0, 1.0, 1.0], "strictly increasing or strictly decreasing"),
+    ],
+)
+def test_grid_rejects_invalid_points(points: list[Any], match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        Grid(points, [0.0, 1.0], 4326)
+    with pytest.raises(ValueError, match=match):
+        Grid([0.0, 1.0], points, 4326)
 
 
 @pytest.mark.parametrize("crs", ["EPSG:6931", 6931, CRS.from_epsg(6931)])

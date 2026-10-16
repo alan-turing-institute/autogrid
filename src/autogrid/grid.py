@@ -37,12 +37,16 @@ class Grid:
                 accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS.
             name: Optional label for display, e.g. "EASE2 south 25p0km". It is
                 not part of the grid's identity, so is ignored by == and hash.
+
+        Raises:
+            ValueError: If either set of points is not 1D, has fewer than two
+                points, contains non-finite values or is not strictly monotonic.
         """
         self.crs: CRS = CRS.from_user_input(crs)
         self.name = name
         # Read-only copies, so a Grid can't change after it has been hashed
-        self.x_points = np.array(x_points, dtype=np.float64)
-        self.y_points = np.array(y_points, dtype=np.float64)
+        self.x_points = self._validate_points(x_points, "x")
+        self.y_points = self._validate_points(y_points, "y")
         self.x_points.flags.writeable = False
         self.y_points.flags.writeable = False
 
@@ -192,6 +196,25 @@ class Grid:
             )
             raise ValueError(msg)
         return cls(x_points, y_points, crs)
+
+    @staticmethod
+    def _validate_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:
+        """Return the points as a new float64 array, checking they define an axis."""
+        points = np.array(points, dtype=np.float64)
+        if points.ndim != 1 or len(points) < 2:
+            msg = (
+                f"{axis} points must be a 1D array of at least two points, but got "
+                f"shape {points.shape}."
+            )
+            raise ValueError(msg)
+        if not np.isfinite(points).all():
+            msg = f"{axis} points must all be finite."
+            raise ValueError(msg)
+        steps = np.diff(points)
+        if not ((steps > 0).all() or (steps < 0).all()):
+            msg = f"{axis} points must be strictly increasing or strictly decreasing."
+            raise ValueError(msg)
+        return points
 
     @staticmethod
     def guess_bounds(points: NDArray[np.float64]) -> NDArray[np.float64]:
