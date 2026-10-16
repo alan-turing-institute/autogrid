@@ -42,6 +42,17 @@ def test_equal_grids_hash_equal() -> None:
     assert hash(Grid([0.0], [0.0], 4326)) == hash(Grid([-0.0], [0.0], 4326))
 
 
+def test_equivalent_crs_grids_hash_equal() -> None:
+    # Rebuild EPSG:4326 without its identifier or name, so its WKT differs
+    crs_dict = CRS.from_epsg(4326).to_json_dict()
+    del crs_dict["id"]
+    crs_dict["name"] = "renamed"
+    a = Grid([0.0, 1.0], [0.0, 1.0], 4326)
+    b = Grid([0.0, 1.0], [0.0, 1.0], CRS.from_json_dict(crs_dict))
+    assert a == b
+    assert hash(a) == hash(b)
+
+
 def test_name_is_ignored_by_equality() -> None:
     a = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="a")
     b = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="b")

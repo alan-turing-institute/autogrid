@@ -56,10 +56,10 @@ class Grid:
         )
 
     def __hash__(self) -> int:
-        # Adding 0.0 maps -0.0 to 0.0, which compare equal but differ in bytes
         return hash(
             (
-                self.crs,
+                self.crs.to_epsg(),
+                # Adding 0.0 maps -0.0 to 0.0
                 (self.x_points + 0.0).tobytes(),
                 (self.y_points + 0.0).tobytes(),
             )
