@@ -217,11 +217,8 @@ def test_gaussian_mean_keeps_source_and_target_shapes(target: Grid) -> None:
     np.testing.assert_allclose(result, 1.0, rtol=1e-6)
 
 
-@pytest.mark.parametrize("max_distance_km", [None, 1000.0], ids=["dense", "sparse"])
-def test_gaussian_mean_keeps_scalar_target_shape(max_distance_km: float | None) -> None:
-    result = gaussian_mean(
-        [0.0], [0.0], [1.0], 0.0, 0.0, 100.0, max_distance_km=max_distance_km
-    )
+def test_gaussian_mean_keeps_scalar_target_shape() -> None:
+    result = gaussian_mean([0.0], [0.0], [1.0], 0.0, 0.0, 100.0)
     assert result.shape == ()
     np.testing.assert_allclose(result, 1.0)
 
@@ -250,64 +247,3 @@ def test_gaussian_mean_rejects_invalid_arguments(
     } | kwargs
     with pytest.raises(ValueError, match=match):
         gaussian_mean(**args)
-
-
-def test_gaussian_mean_max_distance_beyond_globe_matches_dense(
-    target: Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
-) -> None:
-    lat, lon, values = observations
-    args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
-    np.testing.assert_allclose(
-        gaussian_mean(*args, max_distance_km=25000.0),
-        gaussian_mean(*args),
-        rtol=1e-12,
-        atol=1e-14,
-    )
-
-
-def test_gaussian_mean_max_distance_matches_brute_force(
-    target: Grid, observations: tuple[np.ndarray, np.ndarray, np.ndarray]
-) -> None:
-    lat, lon, values = observations
-    distance_scale_km, max_distance_km = 300.0, 800.0
-    result = gaussian_mean(
-        lat,
-        lon,
-        values,
-        target.latitudes,
-        target.longitudes,
-        distance_scale_km,
-        max_distance_km=max_distance_km,
-    )
-    distance_km = _haversine_km(
-        target.latitudes.ravel()[:, None], target.longitudes.ravel()[:, None], lat, lon
-    )
-    weights = np.exp(-0.5 * (distance_km / distance_scale_km) ** 2).clip(min=1e-10)
-    weights[distance_km > max_distance_km] = 0.0
-    with np.errstate(invalid="ignore"):
-        expected = (values @ weights.T) / weights.sum(axis=1)
-    expected = expected.reshape(3, *target.shape)
-    # Some target points have no observations within the cutoff, others do
-    assert np.isnan(expected).any() and np.isfinite(expected).any()
-    np.testing.assert_array_equal(np.isnan(result), np.isnan(expected))
-    np.testing.assert_allclose(result, expected, rtol=1e-9, atol=1e-12)
-
-
-def test_gaussian_mean_max_distance_includes_coincident_points() -> None:
-    lat, lon = np.array([-70.0, -65.0]), np.array([0.0, 90.0])
-    result = gaussian_mean(
-        lat, lon, [1.0, 2.0], lat, lon, distance_scale_km=10.0, max_distance_km=1.0
-    )
-    np.testing.assert_allclose(result, [1.0, 2.0])
-
-
-def test_gaussian_mean_max_distance_leaves_far_points_nan() -> None:
-    result = gaussian_mean(
-        [60.0], [0.0], [1.0], [60.0, -60.0], [0.0, 0.0], 50.0, max_distance_km=250.0
-    )
-    np.testing.assert_array_equal(np.isnan(result), [False, True])
-
-
-def test_gaussian_mean_rejects_non_positive_max_distance() -> None:
-    with pytest.raises(ValueError, match="max_distance_km must be positive"):
-        gaussian_mean([0.0], [0.0], [1.0], [0.0], [0.0], 100.0, max_distance_km=0)

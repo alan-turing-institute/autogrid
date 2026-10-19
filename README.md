@@ -133,13 +133,11 @@ gridded = gaussian_mean(
     target.latitudes,
     target.longitudes,
     distance_scale_km=200,
-    max_distance_km=1000,  # ignore observations further than this, for speed
 )
 ```
 
-With `max_distance_km` set, target points with no observations within that distance are NaN. If it
-is not set, every observation contributes to every target point, and target points far from all
-observations tend to the unweighted mean of the observations instead.
+Every observation contributes to every target point, so target points far from all observations
+tend to the unweighted mean of the observations rather than to NaN.
 
 ### Find nearest points on a very large grid
 
