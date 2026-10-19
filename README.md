@@ -47,8 +47,9 @@ source, nearest in degrees) |
 | `"area_weighted"` | Weighted area-overlap regridding, for grids that share a CRS |
 
 Target points outside the source grid are NaN, and so are any target points computed from NaN or
-masked source values. `regridder.outside_source` flags the target points that fall outside the
-source grid.
+masked source values. For the `"linear"` and `"nearest"` methods, target points between the
+outermost source points and the edge of the source cells take the value of the edge cell.
+`regridder.outside_source` flags the target points that fall outside the source grid.
 
 ### Regrid a forecast file from EASE-Grid 2.0 to latitude-longitude
 

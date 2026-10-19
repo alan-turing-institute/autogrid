@@ -26,7 +26,11 @@ def test_regrid_matches_analytic_field(
     assert isinstance(result, np.ndarray)
     assert not isinstance(result, np.ma.MaskedArray)
     assert result.shape == south.shape
-    np.testing.assert_allclose(result, analytic(south), atol=atol)
+    # Within half a cell of the pole, beyond the outermost source latitudes, the
+    # source edge values are held rather than extrapolated
+    polar = np.abs(south.latitudes) > latlon.y_points.max()
+    np.testing.assert_allclose(result[~polar], analytic(south)[~polar], atol=atol)
+    np.testing.assert_allclose(result[polar], analytic(south)[polar], atol=1e-2)
 
 
 @pytest.mark.parametrize("method", ["linear", "nearest"])
@@ -78,6 +82,29 @@ def test_points_outside_source_are_nan(south: Grid) -> None:
     result = Regridder(regional, south).apply(np.ones(regional.shape))
     assert np.isnan(result).any()
     np.testing.assert_allclose(result[~np.isnan(result)], 1.0)
+
+
+@pytest.mark.parametrize("method", ["linear", "nearest"])
+def test_half_cell_beyond_outermost_points_keeps_edge_values(method: Method) -> None:
+    source = Grid(np.arange(10.0, 20.0, 1.0), np.arange(50.0, 55.0, 1.0), "EPSG:4326")
+    data = np.broadcast_to(source.x_points, source.shape) * 10
+    # Points just outside the source cells, and inside the edge cells beyond
+    # the outermost source points
+    target = Grid([9.4, 9.6, 19.4, 19.6], [52.0, 53.0], "EPSG:4326")
+    result = Regridder(source, target).apply(data, method)
+    np.testing.assert_array_equal(result[:, 1:3], [[100.0, 190.0]] * 2)
+    assert np.isnan(result[:, [0, 3]]).all()
+
+
+def test_integer_input_is_regridded_to_float(south: Grid) -> None:
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
+    regridder = Regridder(regional, south)
+    data = np.ones(regional.shape, dtype=np.int32)
+    methods: list[Method] = ["linear", "nearest", "nearest_great_circle"]
+    for method in methods:
+        result = regridder.apply(data, method)
+        assert np.issubdtype(result.dtype, np.floating)
+        np.testing.assert_array_equal(np.isnan(result), regridder.outside_source)
 
 
 def test_nan_input_propagates(latlon: Grid, south: Grid) -> None:

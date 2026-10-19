@@ -8,7 +8,6 @@ from functools import lru_cache
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from pyproj import Transformer
 from scipy.spatial import KDTree
 
 from autogrid.grids import Grid
@@ -16,7 +15,7 @@ from autogrid.grids.axes import normalise_longitude
 from autogrid.regrid.sphere import check_points, unit_vectors
 
 # Largest number of target points whose latitudes and longitudes are held at
-# once by search_grid and outside_grid
+# once by search_grid
 _BLOCK_POINTS = 2**22
 
 # Offsets of a grid cell and its eight neighbours, as (row, column), with the cell
@@ -146,7 +145,9 @@ def search_grid(
     iy = np.empty(target.shape, dtype=np.intp)
     ix = np.empty(target.shape, dtype=np.intp)
     outside = np.empty(target.shape, dtype=np.bool_)
-    for block in row_blocks(target):
+    rows = max(1, _BLOCK_POINTS // target.shape[1])
+    for start in range(0, target.shape[0], rows):
+        block = slice(start, start + rows)
         # Skip check_points, as _search handles the NaN latitudes and longitudes of
         # points beyond the valid area of the target CRS
         lons, lats = target.lonlat_slice(block)
@@ -186,31 +187,6 @@ def nearest_index(
     return np.where(nearer_lower, upper - 1, upper)
 
 
-def outside_grid(
-    source: Grid, target: Grid, transformer: Transformer | None
-) -> NDArray[np.bool_]:
-    """Flag target grid points that lie outside the cells of the source grid.
-
-    The target is processed a block of rows at a time.
-
-    Args:
-        source: Grid of the source points.
-        target: Grid of the target points.
-        transformer: Transformer from the target CRS to the source CRS, or None
-            if the target points are already in the source CRS.
-
-    Returns:
-        A boolean array with the target grid shape (ny, nx).
-    """
-    outside = np.empty(target.shape, dtype=np.bool_)
-    for block in row_blocks(target):
-        x, y = target.x[block], target.y[block]
-        if transformer is not None:
-            x, y = transformer.transform(x, y)
-        outside[block] = ~source.contains(x, y)
-    return outside
-
-
 def point_vectors(
     grid: Grid, iy: NDArray[np.intp], ix: NDArray[np.intp]
 ) -> NDArray[np.float64]:
@@ -221,9 +197,3 @@ def point_vectors(
     """
     lon, lat = grid.trf_to_lonlat.transform(grid.x_points[ix], grid.y_points[iy])
     return unit_vectors(lat, lon).reshape(*iy.shape, 3)
-
-
-def row_blocks(grid: Grid) -> list[slice]:
-    """Blocks of rows of a grid, each with at most about _BLOCK_POINTS points."""
-    rows = max(1, _BLOCK_POINTS // grid.shape[1])
-    return [slice(start, start + rows) for start in range(0, grid.shape[0], rows)]
