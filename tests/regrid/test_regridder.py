@@ -8,7 +8,6 @@ from autogrid import Grid, Regridder
 from autogrid.grids import build_global_latlon
 from autogrid.regrid.cubes import to_cube
 from autogrid.regrid.grid_search import grid_to_grid
-from autogrid.regrid.points import nearest_indices
 from autogrid.regrid.regridder import Method
 
 
@@ -193,53 +192,13 @@ def test_nearest_great_circle_outside_source_is_nan(south: Grid) -> None:
     np.testing.assert_allclose(result[~np.isnan(result)], 1.0)
 
 
-def test_nearest_great_circle_uses_source_datum() -> None:
-    # On British National Grid (OSGB36 datum) the nearest points must be found
-    # by the same latitudes and longitudes as Grid, with no datum shift
-    grid = Grid(np.arange(0, 700000, 50000.0), np.arange(0, 1200000, 50000.0), 27700)
-    # A dense target, so a datum shift of ~100 m would move some nearest points
-    target = Grid(np.arange(-8, 2, 0.05), np.arange(50, 60, 0.05), "EPSG:4326")
-    got = grid_to_grid(grid, target)
-    expected = nearest_indices(
-        grid.latitudes, grid.longitudes, target.latitudes, target.longitudes
-    )
-    for g, want in zip(got, expected, strict=True):
-        np.testing.assert_array_equal(g, want)
-
-
-@pytest.mark.parametrize("method", ["linear", "nearest", "nearest_great_circle"])
-def test_regrid_respects_prime_meridian(method: Method) -> None:
-    # Longitudes relative to the Paris meridian, 2.34 degrees east of Greenwich
-    source = Grid(
-        np.arange(-10, 10.01, 0.1),
-        np.arange(40, 52.01, 0.1),
-        "+proj=longlat +ellps=clrk80ign +pm=paris +no_defs",
-    )
-    target = Grid(np.arange(-5, 10.01, 0.5), np.arange(42, 50.01, 0.5), "EPSG:4326")
-    paris_degrees = 2.5969213 * 0.9
-    result = Regridder(source, target).apply(source.x + paris_degrees, method)
-    np.testing.assert_allclose(result, target.x, atol=0.05)
-
-
-def test_regrid_respects_datum() -> None:
-    # OSGB 1936 is offset from WGS 84 by about 0.002 degrees of longitude here
-    source = Grid(np.arange(-5, 1.01, 0.05), np.arange(50, 56.01, 0.05), "EPSG:4277")
-    target = Grid(np.arange(-4, 0.01, 0.5), np.arange(51, 55.01, 0.5), "EPSG:4326")
-    result = Regridder(source, target).apply(source.x, "linear")
-    expected, _ = Transformer.from_crs(
-        target.crs, source.crs, always_xy=True
-    ).transform(target.x, target.y)
-    np.testing.assert_allclose(result, expected, atol=1e-5)
-
-
 def test_outside_source_matches_iris_sample_points() -> None:
-    # British National Grid points (OSGB36 datum) straddling the western edge
-    # of a WGS 84 source, 20 m apart, so the ~100 m datum shift that iris
-    # applies moves the edge by several points
+    # UTM points straddling the western edge of a latitude-longitude source,
+    # 20 m apart and none exactly on it
     source = Grid(np.arange(-2.0, 0.01, 0.01), np.arange(52.0, 53.01, 0.01), 4326)
     edge = source.x_bounds[0, 0]
-    x0, y0 = Transformer.from_crs(4326, 27700, always_xy=True).transform(edge, 52.5)
-    target = Grid(x0 + np.arange(-500, 500, 20.0), [y0, y0 + 20], 27700)
+    x0, y0 = Transformer.from_crs(4326, 32630, always_xy=True).transform(edge, 52.5)
+    target = Grid(x0 + np.arange(-490, 500, 20.0), [y0, y0 + 20], 32630)
     regridder = Regridder(source, target)
     src_y, _ = to_cube(source).dim_coords
     tgt_y, tgt_x = to_cube(target).dim_coords
@@ -248,40 +207,8 @@ def test_outside_source_matches_iris_sample_points() -> None:
     np.testing.assert_array_equal(regridder.outside_source, want)
     assert want.any()
     assert not want.all()
-    # The great circle search compares latitudes and longitudes unshifted
-    _, _, unshifted = regridder._great_circle
-    assert (unshifted != want).any()
+    # With no datum shift, the great circle search flags the same points
+    _, _, searched = regridder._great_circle
+    np.testing.assert_array_equal(searched, want)
     nan = np.isnan(regridder.apply(np.ones(source.shape), "nearest_great_circle"))
-    np.testing.assert_array_equal(nan, unshifted)
-
-
-def test_regrid_rejects_latlon_not_in_degrees() -> None:
-    source = Grid(np.arange(0, 10.0), np.arange(40, 50.0), "EPSG:4807")
-    with pytest.raises(ValueError, match="must be in degrees"):
-        Regridder(source, build_global_latlon(1.0)).apply(np.zeros(source.shape))
-
-
-def test_outside_source_handles_grads() -> None:
-    # EPSG:4807 is in grads relative to Paris, so a full turn of longitude is 400
-    # The source spans 45 to 355 grads, so -50 grads (350) is inside it but
-    # -30 grads (370) is not
-    source = Grid(np.arange(50, 351, 10.0), np.arange(-50, 51, 10.0), "EPSG:4807")
-    target = Grid([-50.0, -30.0], [0.0, 10.0], "EPSG:4807")
-    outside = Regridder(source, target).outside_source
-    np.testing.assert_array_equal(outside, [[False, True], [False, True]])
-
-
-def test_outside_source_handles_grads_from_degrees() -> None:
-    # Iris can't build a coordinate system for EPSG:4807, as it is in grads, but
-    # outside_source needs none. The source spans 45 to 355 grads east of Paris,
-    # which is 2.34 degrees east, so from 42.84 degrees east, eastward to 38.16
-    # degrees west
-    source = Grid(np.arange(50, 351, 10.0), np.arange(-50, 51, 10.0), "EPSG:4807")
-    target = Grid([-40.0, -36.0], [0.0, 10.0], "EPSG:4326")
-    outside = Regridder(source, target).outside_source
-    np.testing.assert_array_equal(outside, [[False, True], [False, True]])
-
-
-def test_global_grads_grid_is_circular() -> None:
-    grid = Grid(np.arange(0, 400, 10.0) + 5, np.arange(-95, 100, 10.0), "EPSG:4807")
-    assert grid.is_circular
+    np.testing.assert_array_equal(nan, want)

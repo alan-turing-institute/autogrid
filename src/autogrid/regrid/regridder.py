@@ -9,7 +9,6 @@ from iris.analysis import AreaWeighted, Linear, Nearest
 from iris.coords import DimCoord
 from iris.cube import Cube
 from numpy.typing import ArrayLike, NDArray
-from pyproj import Transformer
 
 from autogrid.grids import Grid
 from autogrid.regrid import grid_search
@@ -63,29 +62,14 @@ class Regridder:
         """Flag for target points that lie outside the cells of the source grid.
 
         Target points are transformed into the source CRS as iris does for the
-        "linear", "nearest" and "area_weighted" methods, applying any datum
-        shift between the grids. "nearest_great_circle" instead masks the
-        points whose search starts outside the source grid, found through each
-        grid's own latitudes and longitudes with no datum shift, so it can
-        differ from this near the edge of the source grid if the datums differ.
-        Where iris can't regrid between the grids, e.g. for a latitude-longitude
-        CRS not in degrees, target points are transformed with pyproj instead.
+        "linear", "nearest" and "area_weighted" methods.
 
         Returns:
             A boolean array with the target grid shape (ny, nx).
         """
-        # Equal CRSs give equal coordinate systems, even where iris can't build one
-        transformer = None
-        if self.source.crs != self.target.crs:
-            try:
-                source_cs = self._source_coords[0].coord_system
-                target_cs = self._target_coords[0].coord_system
-            except ValueError:
-                transformer = Transformer.from_crs(
-                    self.target.crs, self.source.crs, always_xy=True
-                )
-            else:
-                transformer = sample_transformer(source_cs, target_cs)
+        transformer = sample_transformer(
+            self._source_coords[0].coord_system, self._target_coords[0].coord_system
+        )
         return grid_search.outside_grid(self.source, self.target, transformer)
 
     def _regridder(self, method: Method) -> Callable[[Cube], Cube]:

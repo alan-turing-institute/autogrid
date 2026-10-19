@@ -2,7 +2,8 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS
 
-from autogrid.crs import full_turn
+# One full turn of longitude, in degrees
+FULL_TURN = 360.0
 
 
 def check_axis_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:
@@ -56,6 +57,5 @@ def normalise_longitude(
     x = np.asarray(x, dtype=np.float64)
     if not crs.is_geographic:
         return x
-    turn = full_turn(crs)
     middle = (np.min(x_bounds) + np.max(x_bounds)) / 2
-    return middle + (x - middle + turn / 2) % turn - turn / 2
+    return middle + (x - middle + FULL_TURN / 2) % FULL_TURN - FULL_TURN / 2

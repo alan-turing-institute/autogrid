@@ -8,8 +8,7 @@ from autogrid import Grid
 from autogrid.crs import CRSLike
 from autogrid.grids import build_ease2, build_global_latlon
 
-PARIS = "+proj=longlat +ellps=clrk80ign +pm=paris +no_defs"
-PARIS_DEGREES = 2.5969213 * 0.9
+SPHERE = "+proj=longlat +R=6371229"
 
 
 def test_equal_grids_hash_equal() -> None:
@@ -35,7 +34,7 @@ def test_equivalent_crs_grids_hash_equal() -> None:
 def test_grids_differing_only_in_crs_are_distinct_keys() -> None:
     rotated = "+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=37.5 +lon_0=357.5"
     a = Grid([0.0, 1.0], [0.0, 1.0], rotated)
-    b = Grid([0.0, 1.0], [0.0, 1.0], PARIS)
+    b = Grid([0.0, 1.0], [0.0, 1.0], SPHERE)
     c = Grid([0.0, 1.0], [0.0, 1.0], 4326)
     assert len({a, b, c}) == 3
 
@@ -156,6 +155,61 @@ def test_grid_accepts_any_pyproj_crs_input(crs: CRSLike) -> None:
     assert grid == build_ease2("north", "25p0km", shape=(2, 2))
 
 
+ROTATED = CRS.from_cf(
+    {
+        "grid_mapping_name": "rotated_latitude_longitude",
+        "grid_north_pole_latitude": 37.5,
+        "grid_north_pole_longitude": 177.5,
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "crs",
+    [
+        "EPSG:4326",
+        "OGC:CRS84",
+        "EPSG:9057",  # WGS 84 (G1762), a realisation of WGS 84
+        SPHERE,
+        "+proj=longlat +ellps=GRS80",
+        "EPSG:4047",  # Unspecified datum based on the GRS 1980 Authalic Sphere
+        ROTATED,
+        "EPSG:6931",
+        "EPSG:3857",
+        "EPSG:32630",
+        "+proj=laea +lat_0=90 +lon_0=0 +R=6371228",
+    ],
+)
+def test_grid_accepts_supported_crs(crs: CRSLike) -> None:
+    Grid([0.0, 1.0], [0.0, 1.0], crs)
+
+
+@pytest.mark.parametrize(
+    ("crs", "match"),
+    [
+        ("EPSG:4807", "must be in degrees"),  # grads, Paris prime meridian
+        ("+proj=longlat +ellps=clrk80ign +pm=paris", "prime meridian"),
+        ("EPSG:4277", "has datum"),  # OSGB 1936
+        ("EPSG:4269", "has datum"),  # NAD83
+        ("EPSG:4258", "has datum"),  # ETRS89
+        ("EPSG:27700", "has datum"),  # British National Grid, on OSGB 1936
+        ("+proj=longlat +ellps=airy +towgs84=446.448,-125.157,542.06", "has datum"),
+        ("EPSG:2263", "must be in metres"),  # US survey feet
+        ("+proj=utm +zone=30 +datum=WGS84 +units=km", "must be in metres"),
+        ("EPSG:4979", "must be in degrees"),  # WGS 84 3D, with ellipsoidal height
+        ("EPSG:4978", "not a geographic or projected CRS"),  # Geocentric
+    ],
+)
+def test_grid_rejects_unsupported_crs(crs: CRSLike, match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        Grid([0.0, 1.0], [0.0, 1.0], crs)
+
+
+def test_from_latlon_rejects_unsupported_crs() -> None:
+    with pytest.raises(ValueError, match="must be in degrees"):
+        Grid.from_latlon(np.zeros((2, 2)), np.zeros((2, 2)), "EPSG:4807")
+
+
 def test_grid_has_no_iris_attributes() -> None:
     grid = build_ease2("south", "25p0km", shape=(432, 432))
     for name, value in vars(grid).items():
@@ -172,36 +226,10 @@ def test_grids_with_different_crs_are_not_equal() -> None:
     assert build_ease2("north", "36p0km") != build_ease2("south", "36p0km")
 
 
-def test_grid_latlon_is_relative_to_greenwich() -> None:
-    grid = Grid([0.0, 1.0], [45.0, 46.0], PARIS)
-    np.testing.assert_allclose(grid.longitudes[0], [PARIS_DEGREES, PARIS_DEGREES + 1])
-
-
-def test_grid_latlon_converts_grads_to_degrees() -> None:
-    # EPSG:4807 is in grads relative to Paris, so 0 and 50 grads are 2.34 and 45 degrees
-    grid = Grid([0.0, 1.0], [50.0, 51.0], "EPSG:4807")
-    np.testing.assert_allclose(grid.longitudes[0, 0], PARIS_DEGREES, atol=1e-2)
-    np.testing.assert_allclose(grid.latitudes[0, 0], 45.0, atol=1e-2)
-
-
 def test_rotated_grid_latlon_is_unrotated() -> None:
-    crs = CRS.from_cf(
-        {
-            "grid_mapping_name": "rotated_latitude_longitude",
-            "grid_north_pole_latitude": 37.5,
-            "grid_north_pole_longitude": 177.5,
-        }
-    )
-    grid = Grid([0.0, 1.0], [0.0, 1.0], crs)
+    grid = Grid([0.0, 1.0], [0.0, 1.0], ROTATED)
     np.testing.assert_allclose(grid.latitudes[0, 0], 52.5)
     np.testing.assert_allclose(grid.longitudes[0, 0], -2.5)
-
-
-def test_from_latlon_unwraps_grads_across_dateline() -> None:
-    # EPSG:4807 is in grads relative to Paris, so its dateline is at 200 grads
-    grid = Grid([198.0, 199.0, 201.0, 202.0], [50.0, 51.0], "EPSG:4807")
-    rebuilt = Grid.from_latlon(grid.latitudes, grid.longitudes, "EPSG:4807")
-    np.testing.assert_allclose(np.diff(rebuilt.x_points), [1.0, 2.0, 1.0], atol=1e-6)
 
 
 def test_contains_uses_cell_bounds() -> None:

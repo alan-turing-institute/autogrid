@@ -7,7 +7,7 @@ from iris.cube import Cube
 from numpy.typing import ArrayLike
 from pyproj import Transformer
 
-from autogrid.crs.iris import coord_system, projected_units
+from autogrid.crs import coord_system
 from autogrid.grids import Grid
 
 
@@ -21,7 +21,7 @@ def _dim_coords(grid: Grid) -> tuple[DimCoord, DimCoord]:
         names, units = ("latitude", "longitude"), "degrees"
     else:
         names = ("projection_y_coordinate", "projection_x_coordinate")
-        units = projected_units(grid.crs)
+        units = "m"
     y = DimCoord(
         grid.y_points,
         standard_name=names[0],
@@ -45,8 +45,8 @@ def sample_transformer(source: CoordSystem, target: CoordSystem) -> Transformer 
     """Return the transformer iris regridders use to find target points in a source CRS.
 
     Iris transforms target points with the cartopy CRSs of the two coordinate
-    systems, applying any datum shift between them, or not at all if the
-    coordinate systems are equal, in which case this returns None.
+    systems, or not at all if the coordinate systems are equal, in which case
+    this returns None.
     """
     if source == target:
         return None

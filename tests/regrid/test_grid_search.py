@@ -174,17 +174,14 @@ def test_outside_grid_matches_in_blocks(
 
 
 def test_search_grid_flags_outside_by_search_coordinates() -> None:
-    # British National Grid points (OSGB36 datum) straddling the western edge
-    # of a WGS 84 source, 20 m apart, so a datum shift of ~100 m would move
-    # the edge by several points
+    # UTM points straddling the western edge of a latitude-longitude source,
+    # 20 m apart and none exactly on it
     source = Grid(np.arange(-2.0, 0.01, 0.01), np.arange(52.0, 53.01, 0.01), 4326)
     edge = source.x_bounds[0, 0]
-    x0, y0 = Transformer.from_crs(4326, 27700, always_xy=True).transform(edge, 52.5)
-    target = Grid(x0 + np.arange(-500, 500, 20.0), [y0, y0 + 20], 27700)
+    x0, y0 = Transformer.from_crs(4326, 32630, always_xy=True).transform(edge, 52.5)
+    target = Grid(x0 + np.arange(-490, 500, 20.0), [y0, y0 + 20], 32630)
     lats, lons = target.latitudes, target.longitudes
     want = ~source.contains(*source.trf_from_lonlat.transform(lons, lats))
     np.testing.assert_array_equal(search_grid(source, target)[2], want)
-    shifted = Transformer.from_crs(27700, 4326, always_xy=True).transform(
-        target.x, target.y
-    )
-    assert (want != ~source.contains(*shifted)).any()
+    assert want.any()
+    assert not want.all()

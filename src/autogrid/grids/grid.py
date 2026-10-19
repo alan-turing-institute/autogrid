@@ -8,11 +8,16 @@ from pyproj import CRS, Transformer
 from autogrid.crs import (
     CRSLike,
     from_lonlat_transformer,
-    full_turn,
+    projection,
+    supported_crs,
     to_lonlat_transformer,
 )
-from autogrid.crs.cartopy import projection
-from autogrid.grids.axes import check_axis_points, guess_bounds, normalise_longitude
+from autogrid.grids.axes import (
+    FULL_TURN,
+    check_axis_points,
+    guess_bounds,
+    normalise_longitude,
+)
 
 
 class Grid:
@@ -20,6 +25,11 @@ class Grid:
 
     The grid is defined by 1D x and y points and a CRS. For geographic CRSs, x
     is longitude and y is latitude, whatever the CRS's own axis order.
+
+    Only some CRSs are supported: latitude-longitude and rotated pole CRSs in
+    degrees, and projected CRSs in metres, on the WGS 84 datum or a bare
+    ellipsoid, with a Greenwich prime meridian. Reproject coordinates in any
+    other CRS into one of these first.
     """
 
     def __init__(
@@ -36,15 +46,17 @@ class Grid:
             x_points: 1D array of x coordinates of grid points.
             y_points: 1D array of y coordinates of grid points.
             crs: The CRS of the grid, as anything pyproj.CRS.from_user_input
-                accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS.
+                accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS. It must be
+                one of the supported CRSs.
             name: Optional label for display, e.g. "EASE2 south 25p0km". It is
                 not part of the grid's identity, so is ignored by == and hash.
 
         Raises:
-            ValueError: If either set of points is not 1D, has fewer than two
-                points, contains non-finite values or is not strictly monotonic.
+            ValueError: If the CRS is not supported, or either set of points is
+                not 1D, has fewer than two points, contains non-finite values or
+                is not strictly monotonic.
         """
-        self.crs: CRS = CRS.from_user_input(crs)
+        self.crs: CRS = supported_crs(crs)
         self.name = name
         # Read-only copies, so a Grid can't change after it has been hashed
         self.x_points = check_axis_points(x_points, "x")
@@ -90,7 +102,7 @@ class Grid:
         if not self.is_geographic:
             return False
         extent = self.x_bounds[-1, 1] - self.x_bounds[0, 0]
-        return bool(np.isclose(abs(extent), full_turn(self.crs)))
+        return bool(np.isclose(abs(extent), FULL_TURN))
 
     @property
     def is_geographic(self) -> bool:
@@ -217,9 +229,9 @@ class Grid:
                 the recovered grid lines, as a fraction of the grid spacing.
 
         Raises:
-            ValueError: If the arrays are not 2D with matching shapes, have
-                fewer than two rows or columns, or the points are not on a
-                rectilinear grid in the CRS.
+            ValueError: If the CRS is not supported, the arrays are not 2D with
+                matching shapes, have fewer than two rows or columns, or the
+                points are not on a rectilinear grid in the CRS.
         """
         latitudes = np.asarray(latitudes, dtype=np.float64)
         longitudes = np.asarray(longitudes, dtype=np.float64)
@@ -235,14 +247,13 @@ class Grid:
                 f"a grid, but got shape {latitudes.shape}."
             )
             raise ValueError(msg)
-        crs = CRS.from_user_input(crs)
+        crs = supported_crs(crs)
         x, y = from_lonlat_transformer(crs).transform(longitudes, latitudes)
         if crs.is_geographic:
             # Start every row on the same branch as the first, e.g. 180 and -180,
             # then keep longitudes monotonic across the dateline, e.g. 179.5, -179.5
-            turn = full_turn(crs)
-            x[:, 0] -= turn * np.round((x[:, 0] - x[0, 0]) / turn)
-            x = np.unwrap(x, period=turn, axis=1)
+            x[:, 0] -= FULL_TURN * np.round((x[:, 0] - x[0, 0]) / FULL_TURN)
+            x = np.unwrap(x, period=FULL_TURN, axis=1)
         x_points, y_points = x.mean(axis=0), y.mean(axis=1)
         spacing = min(np.abs(np.diff(x_points)).min(), np.abs(np.diff(y_points)).min())
         deviation = max(

@@ -2,7 +2,7 @@ import pytest
 from iris.coord_systems import GeogCS, RotatedGeogCS
 from pyproj import CRS
 
-from autogrid.crs.iris import CartopyRotatedGeogCS, coord_system
+from autogrid.crs.iris import coord_system
 
 
 def test_coord_systems_are_not_shared() -> None:
@@ -21,21 +21,25 @@ ROTATED = CRS.from_cf(
         "grid_north_pole_longitude": 177.5,
     }
 )
-# The OSGB 1936 datum shift is more than its ellipsoid can describe
-ROTATED_OSGB = CRS(
-    "+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=37.5 +lon_0=357.5 "
-    "+ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489"
+ROTATED_SPHERE = CRS.from_cf(
+    {
+        "grid_mapping_name": "rotated_latitude_longitude",
+        "grid_north_pole_latitude": 37.5,
+        "grid_north_pole_longitude": 177.5,
+        "earth_radius": 6371229.0,
+    }
 )
 
 
-@pytest.mark.parametrize(
-    ("crs", "cs_type"),
-    [(ROTATED, RotatedGeogCS), (ROTATED_OSGB, CartopyRotatedGeogCS)],
-    ids=["globe", "datum-shift"],
-)
-def test_rotated_pole_is_rotated_geog_cs(crs: CRS, cs_type: type) -> None:
+@pytest.mark.parametrize("crs", [ROTATED, ROTATED_SPHERE], ids=["wgs84", "sphere"])
+def test_rotated_pole_is_rotated_geog_cs(crs: CRS) -> None:
     cs = coord_system(crs)
     assert isinstance(cs, RotatedGeogCS)
-    assert type(cs) is cs_type
     assert cs.grid_north_pole_latitude == 37.5
     assert cs.grid_north_pole_longitude == 177.5
+
+
+def test_sphere_keeps_radius() -> None:
+    cs = coord_system(CRS("+proj=longlat +R=6371229"))
+    assert isinstance(cs, GeogCS)
+    assert cs.semi_major_axis == cs.semi_minor_axis == 6371229
