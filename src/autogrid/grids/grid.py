@@ -49,7 +49,7 @@ class Grid:
                 accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS. It must be
                 one of the supported CRSs.
             name: Optional label for display, e.g. "EASE2 south 25p0km". It is
-                not part of the grid's identity, so is ignored by == and hash.
+                not part of the grid's identity, so is ignored by ==.
 
         Raises:
             ValueError: If the CRS is not supported, or either set of points is
@@ -58,11 +58,8 @@ class Grid:
         """
         self.crs: CRS = supported_crs(crs)
         self.name = name
-        # Read-only copies, so a Grid can't change after it has been hashed
         self.x_points = check_axis_points(x_points, "x")
         self.y_points = check_axis_points(y_points, "y")
-        self.x_points.flags.writeable = False
-        self.y_points.flags.writeable = False
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Grid):
@@ -71,22 +68,6 @@ class Grid:
             self.crs == other.crs
             and np.array_equal(self.x_points, other.x_points)
             and np.array_equal(self.y_points, other.y_points)
-        )
-
-    def __hash__(self) -> int:
-        return self._hash
-
-    @cached_property
-    def _hash(self) -> int:
-        # The CRS is left out: == compares CRSs by equivalence, which no cheap
-        # CRS key (WKT, EPSG code) respects. Grids differing only in CRS
-        # collide, and __eq__ separates them.
-        return hash(
-            (
-                # Adding 0.0 maps -0.0 to 0.0
-                (self.x_points + 0.0).tobytes(),
-                (self.y_points + 0.0).tobytes(),
-            )
         )
 
     def __repr__(self) -> str:

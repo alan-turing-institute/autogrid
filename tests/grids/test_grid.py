@@ -11,16 +11,7 @@ from autogrid.grids import build_ease2, build_global_latlon
 SPHERE = "+proj=longlat +R=6371229"
 
 
-def test_equal_grids_hash_equal() -> None:
-    lon = np.arange(-179.5, 180, 1.0)
-    lat = np.arange(-89.5, 90, 1.0)
-    cache = {build_global_latlon(1.0): "cached"}
-    assert cache[Grid(lon, lat, "EPSG:4326")] == "cached"
-    a = Grid([0.0, 1.0], [0.0, 1.0], 4326)
-    assert hash(a) == hash(Grid([-0.0, 1.0], [0.0, 1.0], 4326))
-
-
-def test_equivalent_crs_grids_hash_equal() -> None:
+def test_equivalent_crs_grids_are_equal() -> None:
     # Rebuild EPSG:4326 without its identifier or name, so its WKT differs
     crs_dict = CRS.from_epsg(4326).to_json_dict()
     del crs_dict["id"]
@@ -28,22 +19,22 @@ def test_equivalent_crs_grids_hash_equal() -> None:
     a = Grid([0.0, 1.0], [0.0, 1.0], 4326)
     b = Grid([0.0, 1.0], [0.0, 1.0], CRS.from_json_dict(crs_dict))
     assert a == b
-    assert hash(a) == hash(b)
 
 
-def test_grids_differing_only_in_crs_are_distinct_keys() -> None:
+def test_grids_differing_only_in_crs_are_unequal() -> None:
     rotated = "+proj=ob_tran +o_proj=longlat +o_lon_p=0 +o_lat_p=37.5 +lon_0=357.5"
     a = Grid([0.0, 1.0], [0.0, 1.0], rotated)
     b = Grid([0.0, 1.0], [0.0, 1.0], SPHERE)
     c = Grid([0.0, 1.0], [0.0, 1.0], 4326)
-    assert len({a, b, c}) == 3
+    assert a != b
+    assert b != c
+    assert a != c
 
 
 def test_name_is_ignored_by_equality() -> None:
     a = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="a")
     b = Grid([0.0, 1.0], [0.0, 1.0], 4326, name="b")
     assert a == b
-    assert hash(a) == hash(b)
 
 
 def test_repr_shows_name_when_set() -> None:
@@ -56,13 +47,11 @@ def test_repr_shows_name_when_set() -> None:
     assert build_global_latlon(0.25).name == "Global lat-lon 0.25 degree"
 
 
-def test_grid_points_are_read_only() -> None:
+def test_grid_points_are_copied() -> None:
     lon = np.arange(-179.5, 180, 1.0)
     grid = Grid(lon, np.arange(-89.5, 90, 1.0), "EPSG:4326")
     lon[0] = 0.0
     assert grid.x_points[0] == -179.5
-    with pytest.raises(ValueError, match="read-only"):
-        grid.x_points[0] = 0.0
 
 
 @pytest.mark.parametrize(

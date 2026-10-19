@@ -4,8 +4,6 @@ This walks the source grid from a first guess in its own CRS, rather than
 building a KD-tree over all of its points as points.nearest_indices does.
 """
 
-from functools import lru_cache
-
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import KDTree
@@ -58,14 +56,20 @@ def grid_to_points(
             empty, or are not all finite.
     """
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
-    iy, ix, _ = _search(source, target_lats, target_lons)
+    iy, ix, _ = _search(source, edge_tree(source), target_lats, target_lons)
     return iy, ix
 
 
 def _search(
-    source: Grid, target_lats: NDArray[np.float64], target_lons: NDArray[np.float64]
+    source: Grid,
+    edge: tuple[NDArray[np.intp], NDArray[np.intp], KDTree],
+    target_lats: NDArray[np.float64],
+    target_lons: NDArray[np.float64],
 ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_]]:
     """As grid_to_points for checked targets, also flagging those outside the source.
+
+    The edge is edge_tree(source), passed in so that search_grid builds it only once
+    for all of its blocks of target rows.
 
     A target is outside when it starts its search outside the cells of the
     source grid. Targets with no latitude and longitude, such as those beyond the
@@ -86,7 +90,7 @@ def _search(
     outside = ~source.contains(x, y, prenormalised=True)
     from_edge = outside & searchable
     if from_edge.any():
-        edge_iy, edge_ix, tree = edge_tree(source)
+        edge_iy, edge_ix, tree = edge
         _, k = tree.query(targets[from_edge], workers=-1)
         iy[from_edge], ix[from_edge] = edge_iy[k], edge_ix[k]
 
@@ -145,19 +149,17 @@ def search_grid(
     iy = np.empty(target.shape, dtype=np.intp)
     ix = np.empty(target.shape, dtype=np.intp)
     outside = np.empty(target.shape, dtype=np.bool_)
+    edge = edge_tree(source)
     rows = max(1, _BLOCK_POINTS // target.shape[1])
     for start in range(0, target.shape[0], rows):
         block = slice(start, start + rows)
         # Skip check_points, as _search handles the NaN latitudes and longitudes of
         # points beyond the valid area of the target CRS
         lons, lats = target.lonlat_slice(block)
-        iy[block], ix[block], outside[block] = _search(source, lats, lons)
+        iy[block], ix[block], outside[block] = _search(source, edge, lats, lons)
     return iy, ix, outside
 
 
-# Cached, as search_grid searches from the edge of the same source for each block of
-# target rows
-@lru_cache(maxsize=8)
 def edge_tree(source: Grid) -> tuple[NDArray[np.intp], NDArray[np.intp], KDTree]:
     """KD-tree over the edge points of a grid that have a latitude and longitude.
 
@@ -170,10 +172,7 @@ def edge_tree(source: Grid) -> tuple[NDArray[np.intp], NDArray[np.intp], KDTree]
     ix = np.concatenate([cols, cols, np.zeros_like(rows), np.full_like(rows, nx - 1)])
     vectors = point_vectors(source, iy, ix)
     valid = np.isfinite(vectors).all(-1)
-    # Read-only, as callers share them through the cache
-    iy, ix = iy[valid], ix[valid]
-    iy.flags.writeable = ix.flags.writeable = False
-    return iy, ix, KDTree(vectors[valid])
+    return iy[valid], ix[valid], KDTree(vectors[valid])
 
 
 def nearest_index(
