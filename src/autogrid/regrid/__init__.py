@@ -1,6 +1,7 @@
 """Regridding between Grids, and between point clouds by great circle distance.
 
 - regridder: Regridder, for converting arrays from one Grid to another.
+- methods: the regridding methods a Regridder can apply.
 - cubes: iris cubes on Grids, as the Regridder uses them.
 - points: nearest neighbours and Gaussian weighted means of lat/lon points.
 - grid_search: nearest neighbours on a Grid.
@@ -8,8 +9,9 @@
 """
 
 from autogrid.regrid.grid_search import grid_to_grid, grid_to_points
+from autogrid.regrid.methods import Method
 from autogrid.regrid.points import gaussian_mean, nearest_indices
-from autogrid.regrid.regridder import Method, Regridder
+from autogrid.regrid.regridder import Regridder
 
 __all__ = [
     "Method",

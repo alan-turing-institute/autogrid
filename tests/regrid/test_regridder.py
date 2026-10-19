@@ -1,3 +1,5 @@
+from typing import get_args
+
 import numpy as np
 import pytest
 from iris.analysis._regrid import RectilinearRegridder
@@ -8,7 +10,7 @@ from autogrid import Grid, Regridder
 from autogrid.grids import build_global_latlon
 from autogrid.regrid.cubes import to_cube
 from autogrid.regrid.grid_search import grid_to_grid
-from autogrid.regrid.regridder import Method
+from autogrid.regrid.methods import _METHODS, Method
 
 
 def analytic(grid: Grid) -> np.ndarray:
@@ -104,7 +106,7 @@ def test_integer_input_is_regridded_to_float(south: Grid) -> None:
     for method in methods:
         result = regridder.apply(data, method)
         assert np.issubdtype(result.dtype, np.floating)
-        np.testing.assert_array_equal(np.isnan(result), regridder.outside_source)
+        np.testing.assert_array_equal(np.isnan(result), regridder.outside(method))
 
 
 def test_nan_input_propagates(latlon: Grid, south: Grid) -> None:
@@ -129,11 +131,11 @@ def test_regridder_caches_one_regridder_per_method(latlon: Grid, south: Grid) ->
     regridder = Regridder(latlon, south)
     data = np.ones(latlon.shape)
     regridder.apply(data, "linear")
-    linear = regridder._regridders["linear"]
+    linear = regridder._methods["linear"]
     regridder.apply(data, "linear")
     regridder.apply(data, "nearest")
-    assert set(regridder._regridders) == {"linear", "nearest"}
-    assert regridder._regridders["linear"] is linear
+    assert set(regridder._methods) == {"linear", "nearest"}
+    assert regridder._methods["linear"] is linear
 
 
 def test_methods_differ_on_same_regridder(latlon: Grid, south: Grid) -> None:
@@ -161,7 +163,7 @@ def test_nearest_great_circle_matches_grid_to_grid_indices(
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
     expected = regridder.apply(data, "nearest_great_circle")
-    inside = ~regridder.outside_source
+    inside = ~regridder.outside("nearest_great_circle")
     np.testing.assert_array_equal(gathered[..., inside], expected[..., inside])
     assert np.isnan(expected[..., ~inside]).all()
 
@@ -219,7 +221,7 @@ def test_nearest_great_circle_outside_source_is_nan(south: Grid) -> None:
     np.testing.assert_allclose(result[~np.isnan(result)], 1.0)
 
 
-def test_outside_source_matches_iris_sample_points() -> None:
+def test_outside_matches_iris_sample_points() -> None:
     # UTM points straddling the western edge of a latitude-longitude source,
     # 20 m apart and none exactly on it
     source = Grid(np.arange(-2.0, 0.01, 0.01), np.arange(52.0, 53.01, 0.01), 4326)
@@ -231,11 +233,26 @@ def test_outside_source_matches_iris_sample_points() -> None:
     tgt_y, tgt_x = to_cube(target).dim_coords
     x, y = RectilinearRegridder._sample_grid(src_y.coord_system, tgt_x, tgt_y)
     want = ~source.contains(x, y)
-    np.testing.assert_array_equal(regridder.outside_source, want)
+    np.testing.assert_array_equal(regridder.outside("linear"), want)
     assert want.any()
     assert not want.all()
     # With no datum shift, the great circle search flags the same points
-    _, _, searched = regridder._great_circle
-    np.testing.assert_array_equal(searched, want)
+    np.testing.assert_array_equal(regridder.outside("nearest_great_circle"), want)
     nan = np.isnan(regridder.apply(np.ones(source.shape), "nearest_great_circle"))
     np.testing.assert_array_equal(nan, want)
+
+
+def test_every_method_is_registered() -> None:
+    assert set(_METHODS) == set(get_args(Method))
+
+
+@pytest.mark.parametrize("method", get_args(Method))
+def test_outside_matches_nan_for_each_method(method: Method) -> None:
+    # A lat-lon target, as area weighting requires the source coordinate system
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
+    regridder = Regridder(regional, build_global_latlon(2.0))
+    result = regridder.apply(np.ones(regional.shape), method)
+    outside = regridder.outside(method)
+    np.testing.assert_array_equal(np.isnan(result), outside)
+    assert outside.any()
+    assert not outside.all()

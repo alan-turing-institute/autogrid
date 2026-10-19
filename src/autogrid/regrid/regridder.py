@@ -1,18 +1,10 @@
 """Regrid numpy arrays between Grids, with iris or by great circle distance."""
 
-from collections.abc import Callable
-from functools import cached_property
-from typing import Literal
-
 import numpy as np
-from iris.analysis import AreaWeighted, Linear, Nearest
 from numpy.typing import ArrayLike, NDArray
 
 from autogrid.grids import Grid
-from autogrid.regrid import grid_search
-from autogrid.regrid.cubes import pad_edges, padded_coords, to_cube
-
-Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
+from autogrid.regrid.methods import _METHODS, Method, RegridMethod
 
 
 class Regridder:
@@ -32,69 +24,35 @@ class Regridder:
         """
         self.source = source
         self.target = target
-        self._regridders: dict[
-            Method, Callable[[np.ma.MaskedArray], np.ma.MaskedArray]
-        ] = {}
+        self._methods: dict[Method, RegridMethod] = {}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.source!r} -> {self.target!r})"
 
-    @cached_property
-    def _great_circle(
-        self,
-    ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.bool_]]:
-        """Source (iy, ix) of the great circle nearest source point to each target,
-        and the flag for targets outside the source grid, from the same search."""
-        return grid_search.search_grid(self.source, self.target)
+    def _method(self, method: Method) -> RegridMethod:
+        """Return the cached regridding method, building it if needed."""
+        if method not in self._methods:
+            if method not in _METHODS:
+                msg = f"Unknown regridding method {method!r}."
+                raise ValueError(msg)
+            self._methods[method] = _METHODS[method](self.source, self.target)
+        return self._methods[method]
 
-    @cached_property
-    def outside_source(self) -> NDArray[np.bool_]:
-        """Flag for target points that lie outside the cells of the source grid.
+    def outside(self, method: Method = "linear") -> NDArray[np.bool_]:
+        """Flag for target points that lie outside the source grid for a method.
 
-        These are the target points that the "linear" method leaves NaN for a
-        source field with no NaN values. They are found by iris, so match the
-        "linear" and "nearest" methods.
+        These are the target points that the method leaves NaN for a source
+        field with no NaN values. The iris methods find them in the source CRS
+        after any datum shift from the target, while "nearest_great_circle"
+        finds them from where its search starts.
 
         Returns:
             A boolean array with the target grid shape (ny, nx).
+
+        Raises:
+            ValueError: If the method is unknown.
         """
-        return np.isnan(self.apply(np.ones(self.source.shape, np.float32)))
-
-    def _regridder(
-        self, method: Method
-    ) -> Callable[[np.ma.MaskedArray], np.ma.MaskedArray]:
-        """Return the cached iris regridding function for a method, building it if
-        needed."""
-        if method not in self._regridders:
-            # The source is padded to its cell edges, so masking beyond the
-            # outermost source points masks targets outside the source cells
-            coords, pad = padded_coords(self.source)
-            match method:
-                case "linear":
-                    scheme = Linear(extrapolation_mode="mask")
-                case "nearest":
-                    scheme = Nearest(extrapolation_mode="mask")
-                case "area_weighted":
-                    # Area weighting uses the source cells, so is not padded
-                    scheme, coords, pad = (
-                        AreaWeighted(),
-                        to_cube(self.source).dim_coords,
-                        None,
-                    )
-                case _:
-                    msg = f"Unknown regridding method {method!r}."
-                    raise ValueError(msg)
-            regridder = scheme.regridder(
-                to_cube(self.source, coords=coords), to_cube(self.target)
-            )
-
-            def regrid(data: np.ma.MaskedArray) -> np.ma.MaskedArray:
-                if pad is not None:
-                    data = pad_edges(data, pad)
-                return regridder(to_cube(self.source, data, coords)).data
-
-            self._regridders[method] = regrid
-        return self._regridders[method]
+        return self._method(method).outside
 
     def apply(self, data: ArrayLike, method: Method = "linear") -> NDArray[np.floating]:
         """Regrid an array with shape (..., ny, nx) on the source grid.
@@ -124,10 +82,5 @@ class Regridder:
                 f"shape {self.source.shape}."
             )
             raise ValueError(msg)
-        if method == "nearest_great_circle":
-            iy, ix, outside = self._great_circle
-            result = data[..., iy, ix]
-            result[..., outside] = np.ma.masked
-        else:
-            result = self._regridder(method)(data)
+        result = self._method(method)(data)
         return np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
