@@ -1,7 +1,7 @@
 [project]
 name = "autogrid"
 version = "0.0.1"
-description = "Add your description here"
+description = "Grid generation and regridding for geospatial data."
 readme = "README.md"
 authors = []
 requires-python = ">=3.11"
