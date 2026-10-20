@@ -144,7 +144,7 @@ take the values of the nearest ones. Weights underflow to zero beyond about 37 t
 
 ### Plot a field on its own projection
 
-`autogrid.crs.cartopy.projection` gives the cartopy projection of a grid's CRS, which needs the
+`autogrid.plot.projection` gives the cartopy projection of a grid's CRS, which needs the
 `plot` extra (`pip install "autogrid[plot]"`). Its x and y points can be plotted on map axes
 directly.
 
@@ -152,8 +152,8 @@ directly.
 import matplotlib.pyplot as plt
 import numpy as np
 
-from autogrid.crs.cartopy import projection
 from autogrid.grids import build_ease2
+from autogrid.plot import projection
 
 grid = build_ease2("south", "25p0km", shape=(432, 432))
 grid_projection = projection(grid)

@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from autogrid.crs.cartopy import projection
 from autogrid.grids import build_ease2
 from autogrid.grids.ease2 import Region
+from autogrid.plot import projection
 
 
 @pytest.mark.parametrize(

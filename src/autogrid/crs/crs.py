@@ -1,4 +1,4 @@
-"""Helpers for pyproj CRSs, and their cartopy equivalents.
+"""Helpers for pyproj CRSs.
 
 Grids support a small set of CRSs, checked by supported_crs, whose coordinates the
 regridding code can work with directly:
@@ -14,8 +14,8 @@ shares them and pyproj applies any datum shift between two Grids' CRSs. A CRS on
 bare ellipsoid or sphere with no datum, as used by many climate models, has no
 defined shift, so PROJ takes its longitudes and latitudes as WGS 84 ones unchanged.
 
-- cartopy: cartopy projections of CRSs, e.g. for plotting map axes. It imports
-  cartopy, so is not imported by this package.
+Cartopy projections of Grids' CRSs, e.g. for plotting map axes, are in
+autogrid.plot, which imports cartopy.
 """
 
 from typing import Any

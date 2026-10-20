@@ -1,12 +1,12 @@
 import cartopy.crs as ccrs
 import numpy as np
 import pytest
-from pyproj import CRS, Transformer
+from pyproj import CRS
 
 from autogrid import Grid
-from autogrid.crs.cartopy import projection
 from autogrid.grids import build_ease2
 from autogrid.grids.ease2 import Region
+from autogrid.plot import projection
 
 
 @pytest.mark.parametrize("region", ["north", "south", "global"])
@@ -44,18 +44,16 @@ def test_sphere_projection_keeps_radius() -> None:
     [
         "+proj=longlat +ellps=clrk80ign +pm=paris",
         "+proj=laea +lat_0=52 +lon_0=10 +x_0=4321000 +y_0=3210000 +pm=paris",
+        CRS.from_cf(
+            {
+                "grid_mapping_name": "rotated_latitude_longitude",
+                "grid_north_pole_latitude": 37.5,
+                "grid_north_pole_longitude": 177.5,
+                "longitude_of_prime_meridian": 2.337229167,
+            }
+        ),
     ],
 )
-def test_projection_matches_pyproj_with_prime_meridian(crs: str) -> None:
-    lon, lat = np.array([-5.0, 0.0, 8.0]), np.array([45.0, 50.0, 55.0])
-    plot_crs = projection(Grid([0.0, 1.0], [0.0, 1.0], crs))
-    # Compare on the CRS's own ellipsoid, so no datum shift is involved
-    lonlat = CRS(crs).geodetic_crs
-    assert lonlat is not None
-    expected = Transformer.from_crs(lonlat, crs, always_xy=True).transform(
-        *Transformer.from_crs(4326, lonlat, always_xy=True).transform(lon, lat)
-    )
-    source = ccrs.Geodetic(globe=plot_crs.globe)
-    actual = plot_crs.transform_points(source, lon, lat)
-    np.testing.assert_allclose(actual[:, 0], expected[0], atol=1e-6)
-    np.testing.assert_allclose(actual[:, 1], expected[1], atol=1e-6)
+def test_non_greenwich_prime_meridian_is_rejected(crs: str | CRS) -> None:
+    with pytest.raises(ValueError, match="prime meridian"):
+        projection(Grid([0.0, 1.0], [0.0, 1.0], crs))

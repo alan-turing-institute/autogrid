@@ -1,7 +1,5 @@
 """Convert Grids to cartopy projections."""
 
-import math
-
 import cartopy.crs as ccrs
 from pyproj import CRS
 
@@ -34,20 +32,20 @@ def projection(grid: Grid) -> ccrs.Projection:
     Latitude-longitude, Lambert azimuthal equal area (as used by EASE-Grid 2.0)
     and rotated pole CRSs use cartopy's own classes, which give sensible plot
     limits. Anything else is looked up by EPSG code, or wrapped if it has none.
+
+    Raises ValueError for a CRS whose prime meridian is not Greenwich.
     """
     crs = grid.crs
+    if (pm := crs.prime_meridian) is not None and pm.longitude != 0:
+        msg = f"CRS {crs.name!r} has prime meridian {pm.name!r}, but plotting needs Greenwich."
+        raise ValueError(msg)
     cf = crs.to_cf()
-    # Correct for the prime meridian of the projection as Cartopy requires longitudes
-    # from Greenwich
-    meridian = 0.0
-    if (pm := crs.prime_meridian) is not None:
-        meridian = math.degrees(pm.longitude * float(pm.unit_conversion_factor))
     match cf.get("grid_mapping_name"):
         case "latitude_longitude":
-            return ccrs.PlateCarree(central_longitude=meridian, globe=globe(crs))
+            return ccrs.PlateCarree(globe=globe(crs))
         case "lambert_azimuthal_equal_area":
             return ccrs.LambertAzimuthalEqualArea(
-                central_longitude=cf["longitude_of_projection_origin"] + meridian,
+                central_longitude=cf["longitude_of_projection_origin"],
                 central_latitude=cf["latitude_of_projection_origin"],
                 false_easting=cf["false_easting"],
                 false_northing=cf["false_northing"],
