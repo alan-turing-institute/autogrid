@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import KDTree
 
-from autogrid.regrid.sphere import check_points, chord_to_km, unit_vectors
+from autogrid.points.sphere import check_points, chord_to_km, unit_vectors
 
 # Largest number of (target, source) weights held in memory at once by
 # gaussian_mean
@@ -26,7 +26,7 @@ def nearest_indices(
     This suits flat point lists, such as an anemoi dataset's latitudes and
     longitudes, and curvilinear grids. It gives the same nearest points as the
     "nearest_great_circle" method of Regridder. For a very large source Grid,
-    grid_search.grid_to_points finds them without a KD-tree over every point.
+    autogrid.regrid.grid_to_points finds them without a KD-tree over every point.
 
     Every target point takes its nearest source point, however far away, so
     nothing is masked outside the source domain.

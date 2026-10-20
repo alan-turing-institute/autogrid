@@ -5,8 +5,10 @@ between scattered points, using great circle distances where it matters.
 
 - `Grid`: a rectilinear grid of points in any CRS, with its latitudes and longitudes.
 - `Regridder`: regrid arrays from one `Grid` to another, caching the weights.
-- `autogrid.regrid`: various utility methods, e.g. nearest neighbours and Gaussian weighted means of
-plain latitude/longitude points, with no CRS needed.
+- `autogrid.points`: nearest neighbours and Gaussian weighted means of plain latitude/longitude
+points, with no CRS needed.
+- `autogrid.regrid`: `grid_to_points` and `grid_to_grid`, for nearest neighbours on a `Grid` by
+great circle distance.
 
 ## Example workflows
 
@@ -90,7 +92,7 @@ apply them to any number of fields.
 import numpy as np
 
 from autogrid.grids import build_ease2, build_global_latlon
-from autogrid.regrid import nearest_indices
+from autogrid.points import nearest_indices
 
 # A flat list of points, with (variable, point) data
 source_grid = build_global_latlon(1.0)
@@ -118,7 +120,7 @@ entry to the next, so no weights are cached.
 import numpy as np
 
 from autogrid.grids import build_ease2
-from autogrid.regrid import gaussian_mean
+from autogrid.points import gaussian_mean
 
 rng = np.random.default_rng(0)
 obs_lats = rng.uniform(55, 90, 500)

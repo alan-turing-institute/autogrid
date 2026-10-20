@@ -1,7 +1,7 @@
 """Nearest neighbour search by great circle distance, on the points of a Grid.
 
 This walks the source grid from a first guess in its own CRS, rather than
-building a KD-tree over all of its points as points.nearest_indices does.
+building a KD-tree over all of its points as autogrid.points.nearest_indices does.
 """
 
 import numpy as np
@@ -12,7 +12,7 @@ from scipy.spatial import KDTree
 from autogrid.crs import trf_from_lonlat, trf_to_lonlat
 from autogrid.grids import Grid
 from autogrid.grids.axes import normalise_longitude
-from autogrid.regrid.sphere import check_points, unit_vectors
+from autogrid.points.sphere import check_points, unit_vectors
 
 # Largest number of target points whose latitudes and longitudes are held at
 # once by search_grid

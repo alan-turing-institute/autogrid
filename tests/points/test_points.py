@@ -3,11 +3,11 @@ from typing import Any
 import numpy as np
 import pytest
 
-import autogrid.regrid.points
+import autogrid.points.points
 from autogrid import Grid
 from autogrid.grids import build_ease2, build_global_latlon
-from autogrid.regrid.points import gaussian_mean, nearest_indices
-from autogrid.regrid.sphere import EARTH_RADIUS_KM
+from autogrid.points import gaussian_mean, nearest_indices
+from autogrid.points.sphere import EARTH_RADIUS_KM
 
 
 def _haversine_km(
@@ -161,7 +161,7 @@ def test_gaussian_mean_chunking_does_not_change_result(
     args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
     whole = gaussian_mean(*args)
     # Chunks of 7 target points, so the last chunk is partial
-    monkeypatch.setattr(autogrid.regrid.points, "_CHUNK_ELEMENTS", 7 * lat.size)
+    monkeypatch.setattr(autogrid.points.points, "_CHUNK_ELEMENTS", 7 * lat.size)
     np.testing.assert_allclose(gaussian_mean(*args), whole, rtol=1e-12, atol=1e-14)
 
 

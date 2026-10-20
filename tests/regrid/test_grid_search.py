@@ -6,12 +6,12 @@ import autogrid.regrid.grid_search
 from autogrid import Grid
 from autogrid.crs import trf_from_lonlat
 from autogrid.grids import build_ease2, build_global_latlon
+from autogrid.points.points import nearest_indices
 from autogrid.regrid.grid_search import (
     grid_to_grid,
     grid_to_points,
     search_grid,
 )
-from autogrid.regrid.points import nearest_indices
 
 
 def _haversine(
