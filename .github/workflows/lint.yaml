@@ -1,4 +1,4 @@
-name: Test Code
+name: Lint
 
 on:
   push:
@@ -6,27 +6,18 @@ on:
   pull_request:
 
 jobs:
-  test-code:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.14"
           enable-cache: true
-          cache-suffix: release
+          cache-suffix: lint
           activate-environment: true
 
       - name: Check formatting with ruff
@@ -37,6 +28,3 @@ jobs:
 
       - name: Type-check with ty
         run: uv run --group dev ty check
-
-      - name: Test with pytest
-        run: uv run --group dev pytest
