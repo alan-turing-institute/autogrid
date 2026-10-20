@@ -92,14 +92,20 @@ class Grid:
         """Whether x and y are longitude and latitude (possibly rotated)."""
         return self.crs.is_geographic
 
-    @cached_property
+    @property
     def latitudes(self) -> NDArray[np.float64]:
-        """True latitude of each grid point in degrees, with shape (ny, nx)."""
+        """True latitude of each grid point in degrees, with shape (ny, nx).
+
+        Note: to reduce Grid memory usage this is recomputed on each access.
+        """
         return self.lonlat_slice(slice(None))[1]
 
-    @cached_property
+    @property
     def longitudes(self) -> NDArray[np.float64]:
-        """True longitude of each grid point in degrees east, with shape (ny, nx)."""
+        """True longitude of each grid point in degrees east, with shape (ny, nx).
+
+        Note: to reduce Grid memory usage this is recomputed on each access.
+        """
         return self.lonlat_slice(slice(None))[0]
 
     @property
@@ -157,8 +163,8 @@ class Grid:
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         """Longitude and latitude of the points in a block of rows.
 
-        Unlike latitudes and longitudes, these are not cached, so a large grid
-        can be processed a block at a time.
+        A large grid can be processed a block at a time, rather than all at once as by
+        latitudes and longitudes.
 
         Args:
             rows: Slice of the rows of the grid.
