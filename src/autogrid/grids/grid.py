@@ -1,6 +1,6 @@
 from functools import cached_property
+from typing import TYPE_CHECKING
 
-import cartopy.crs as ccrs
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS, Transformer
@@ -8,7 +8,6 @@ from pyproj import CRS, Transformer
 from autogrid.crs import (
     CRSLike,
     from_lonlat_transformer,
-    projection,
     supported_crs,
     to_lonlat_transformer,
 )
@@ -18,6 +17,9 @@ from autogrid.grids.axes import (
     guess_bounds,
     normalise_longitude,
 )
+
+if TYPE_CHECKING:
+    import cartopy.crs as ccrs
 
 
 class Grid:
@@ -106,14 +108,24 @@ class Grid:
         return self.lonlat_slice(slice(None))
 
     @property
-    def projection(self) -> ccrs.Projection:
-        """The cartopy projection of this grid, e.g. for plotting map axes."""
+    def projection(self) -> "ccrs.Projection":
+        """The cartopy projection of this grid, e.g. for plotting map axes.
+
+        This needs cartopy, which is installed with the "plot" extra.
+        """
+        from autogrid.crs.cartopy import projection
+
         return projection(self.crs)
 
     @property
     def shape(self) -> tuple[int, int]:
         """The (ny, nx) shape of the grid."""
         return (len(self.y_points), len(self.x_points))
+
+    @property
+    def size(self) -> int:
+        """The number of points in the grid."""
+        return len(self.y_points) * len(self.x_points)
 
     @cached_property
     def trf_from_lonlat(self) -> Transformer:

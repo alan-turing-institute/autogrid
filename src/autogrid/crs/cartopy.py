@@ -3,15 +3,13 @@
 import cartopy.crs as ccrs
 from pyproj import CRS
 
-from autogrid.crs.crs import cf_rotation, ellipsoid_axes, is_wgs84
+from autogrid.crs.crs import ellipsoid_axes, is_wgs84
 
 
 def globe(crs: CRS) -> ccrs.Globe:
     """Return the cartopy Globe of a supported CRS: WGS 84, or its bare ellipsoid."""
-    # PROJ treats a datum given with explicit ellipsoid axes as unknown, so give
-    # the datum alone
     if is_wgs84(crs):
-        return ccrs.Globe(datum="WGS84", ellipse=None)
+        return ccrs.Globe(datum="WGS84")
     a, b = ellipsoid_axes(crs)
     return ccrs.Globe(semimajor_axis=a, semiminor_axis=b)
 
@@ -36,11 +34,10 @@ def projection(crs: CRS) -> ccrs.Projection:
                 globe=globe(crs),
             )
         case "rotated_latitude_longitude":
-            rotation = cf_rotation(cf)
             return ccrs.RotatedPole(
-                pole_longitude=rotation["grid_north_pole_longitude"],
-                pole_latitude=rotation["grid_north_pole_latitude"],
-                central_rotated_longitude=rotation["north_pole_grid_longitude"],
+                pole_longitude=cf["grid_north_pole_longitude"],
+                pole_latitude=cf["grid_north_pole_latitude"],
+                central_rotated_longitude=cf.get("north_pole_grid_longitude", 0.0),
                 globe=globe(crs),
             )
     if (epsg := crs.to_epsg()) is not None:

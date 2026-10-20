@@ -1,10 +1,11 @@
-"""Regrid numpy arrays between Grids, with iris or by great circle distance."""
+"""Regrid numpy arrays between Grids with sparse weight matrices."""
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy import sparse
 
 from autogrid.grids import Grid
-from autogrid.regrid.methods import _METHODS, Method, RegridMethod
+from autogrid.regrid.methods import _METHODS, Method
 
 
 class Regridder:
@@ -24,35 +25,10 @@ class Regridder:
         """
         self.source = source
         self.target = target
-        self._methods: dict[Method, RegridMethod] = {}
+        self._weights: dict[Method, sparse.csr_array] = {}
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}({self.source!r} -> {self.target!r})"
-
-    def _method(self, method: Method) -> RegridMethod:
-        """Return the cached regridding method, building it if needed."""
-        if method not in self._methods:
-            if method not in _METHODS:
-                msg = f"Unknown regridding method {method!r}."
-                raise ValueError(msg)
-            self._methods[method] = _METHODS[method](self.source, self.target)
-        return self._methods[method]
-
-    def outside(self, method: Method = "linear") -> NDArray[np.bool_]:
-        """Flag for target points that lie outside the source grid for a method.
-
-        These are the target points that the method leaves NaN for a source
-        field with no NaN values. The iris methods find them in the source CRS
-        after any datum shift from the target, while "nearest_great_circle"
-        finds them from where its search starts.
-
-        Returns:
-            A boolean array with the target grid shape (ny, nx).
-
-        Raises:
-            ValueError: If the method is unknown.
-        """
-        return self._method(method).outside
 
     def apply(self, data: ArrayLike, method: Method = "linear") -> NDArray[np.floating]:
         """Regrid an array with shape (..., ny, nx) on the source grid.
@@ -73,7 +49,8 @@ class Regridder:
 
         Raises:
             ValueError: If the data shape does not end with the source grid
-                shape, or the method is unknown.
+                shape, the method is unknown, or the grids do not share a
+                coordinate system for area weighting.
         """
         data = np.ma.masked_invalid(data)
         if data.shape[-2:] != self.source.shape:
@@ -82,5 +59,41 @@ class Regridder:
                 f"shape {self.source.shape}."
             )
             raise ValueError(msg)
-        result = self._method(method)(data)
-        return np.ma.filled(result.astype(np.result_type(result, np.float32)), np.nan)
+        weights = self.weights(method)
+        invalid = np.ma.getmaskarray(data).reshape(-1, self.source.size)
+        values = np.ma.getdata(data).reshape(-1, self.source.size)
+        # Zero invalid points so they add nothing, then make NaN every target
+        # point they contribute to
+        result = (weights @ np.where(invalid, 0, values).T).T
+        if invalid.any():
+            result[(weights @ invalid.T.astype(np.float32)).T > 0] = np.nan
+        result[:, self.outside(method).ravel()] = np.nan
+        dtype = np.result_type(data.dtype, np.float32)
+        return result.astype(dtype).reshape(*data.shape[:-2], *self.target.shape)
+
+    def outside(self, method: Method = "linear") -> NDArray[np.bool_]:
+        """Flag for target points that lie outside the source grid for a method.
+
+        These are the target points that the method leaves NaN for a source
+        field with no NaN values, as no source point contributes to them.
+        "linear" and "nearest" find them in the source CRS, "nearest_great_circle"
+        from where its search starts, and "area_weighted" as the target cells
+        that the source cells do not wholly cover.
+
+        Returns:
+            A boolean array with the target grid shape (ny, nx).
+
+        Raises:
+            ValueError: If the method is unknown.
+        """
+        weights = self.weights(method)
+        return (np.diff(weights.indptr) == 0).reshape(self.target.shape)
+
+    def weights(self, method: Method) -> sparse.csr_array:
+        """Return the cached weights of a method, building them if needed."""
+        if method not in self._weights:
+            if method not in _METHODS:
+                msg = f"Unknown regridding method {method!r}."
+                raise ValueError(msg)
+            self._weights[method] = _METHODS[method](self.source, self.target)
+        return self._weights[method]

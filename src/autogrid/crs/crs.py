@@ -1,7 +1,8 @@
-"""Helpers for pyproj CRSs, and their cartopy and iris equivalents.
+"""Helpers for pyproj CRSs, and their cartopy equivalents.
 
-Grids support a small set of CRSs, checked by supported_crs, so that cartopy,
-iris and pyproj all agree on them without datum shifts or unit conversions:
+Grids support a small set of CRSs, checked by supported_crs, so that cartopy
+and pyproj agree on them, and regridding needs no datum shifts or unit
+conversions:
 
 - latitude-longitude or rotated pole CRSs, in degrees;
 - projected CRSs, in metres;
@@ -10,8 +11,8 @@ each on the WGS 84 datum or on a bare ellipsoid or sphere with no datum, with a
 Greenwich prime meridian. Coordinates in any other CRS can be reprojected into
 one of these first.
 
-- cartopy: cartopy projections of CRSs, e.g. for plotting map axes.
-- iris: iris coordinate systems of CRSs.
+- cartopy: cartopy projections of CRSs, e.g. for plotting map axes. It imports
+  cartopy, so is not imported by this package.
 """
 
 from typing import Any
@@ -114,15 +115,3 @@ def from_lonlat_transformer(crs: CRS) -> Transformer:
 def to_lonlat_transformer(crs: CRS) -> Transformer:
     """Return a transformer from a CRS's x and y to true longitude and latitude."""
     return Transformer.from_crs(crs, base_geographic_crs(crs), always_xy=True)
-
-
-def cf_rotation(cf: dict[str, Any]) -> dict[str, float]:
-    """Return the pole rotation of a rotated pole CRS, given as its CF parameters.
-
-    The keys are the CF parameter names, as iris's RotatedGeogCS takes them.
-    """
-    return {
-        "grid_north_pole_latitude": cf["grid_north_pole_latitude"],
-        "grid_north_pole_longitude": cf["grid_north_pole_longitude"],
-        "north_pole_grid_longitude": cf.get("north_pole_grid_longitude", 0.0),
-    }

@@ -15,37 +15,44 @@ name = "autogrid"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
-    { name = "cartopy" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pyproj", version = "3.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "pyproj", version = "3.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "scitools-iris", version = "3.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "scitools-iris", version = "3.16.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+
+[package.optional-dependencies]
+plot = [
+    { name = "cartopy" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "cartopy" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "scitools-iris", version = "3.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scitools-iris", version = "3.16.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "ty" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "cartopy", specifier = ">=0.26.0" },
+    { name = "cartopy", marker = "extra == 'plot'", specifier = ">=0.26.0" },
     { name = "numpy", specifier = ">=2.4.6" },
     { name = "pyproj", specifier = ">=3.7.2" },
     { name = "scipy", specifier = ">=1.17.1" },
-    { name = "scitools-iris", specifier = ">=3.13" },
 ]
+provides-extras = ["plot"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "cartopy", specifier = ">=0.26.0" },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.17.0" },
+    { name = "scitools-iris", specifier = ">=3.13" },
     { name = "ty", specifier = ">=0.0.88" },
 ]
 

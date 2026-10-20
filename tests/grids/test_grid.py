@@ -199,12 +199,6 @@ def test_from_latlon_rejects_unsupported_crs() -> None:
         Grid.from_latlon(np.zeros((2, 2)), np.zeros((2, 2)), "EPSG:4807")
 
 
-def test_grid_has_no_iris_attributes() -> None:
-    grid = build_ease2("south", "25p0km", shape=(432, 432))
-    for name, value in vars(grid).items():
-        assert not type(value).__module__.startswith("iris"), name
-
-
 def test_grid_bounds_are_halfway_between_points() -> None:
     grid = Grid([0.0, 1.0, 3.0], [10.0, 20.0], "EPSG:4326")
     np.testing.assert_array_equal(grid.x_bounds, [[-0.5, 0.5], [0.5, 2.0], [2.0, 4.0]])

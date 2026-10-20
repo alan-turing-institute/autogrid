@@ -2,7 +2,6 @@
 
 - regridder: Regridder, for converting arrays from one Grid to another.
 - methods: the regridding methods a Regridder can apply.
-- cubes: iris cubes on Grids, as the Regridder uses them.
 - points: nearest neighbours and Gaussian weighted means of lat/lon points.
 - grid_search: nearest neighbours on a Grid.
 - sphere: unit vectors and distances on a spherical Earth.

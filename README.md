@@ -161,8 +161,8 @@ The `"nearest_great_circle"` argument to `Regridder` uses this search.
 
 ### Plot a field on its own projection
 
-`Grid.projection` is the cartopy projection of a grid's CRS. Its x and y coordinates can be plotted
-on map axes directly.
+`Grid.projection` is the cartopy projection of a grid's CRS, which needs the `plot` extra
+(`pip install "autogrid[plot]"`). Its x and y coordinates can be plotted on map axes directly.
 
 ```python
 import matplotlib.pyplot as plt
