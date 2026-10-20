@@ -4,6 +4,7 @@ from pyproj import Transformer
 
 import autogrid.regrid.grid_search
 from autogrid import Grid
+from autogrid.crs import trf_from_lonlat
 from autogrid.grids import build_ease2, build_global_latlon
 from autogrid.regrid.grid_search import (
     grid_to_grid,
@@ -166,7 +167,8 @@ def test_search_grid_flags_outside_by_search_coordinates() -> None:
     x0, y0 = Transformer.from_crs(4326, 32630, always_xy=True).transform(edge, 52.5)
     target = Grid(x0 + np.arange(-490, 500, 20.0), [y0, y0 + 20], 32630)
     lats, lons = target.latitudes, target.longitudes
-    want = ~source.contains(*source.trf_from_lonlat.transform(lons, lats))
+    x, y = trf_from_lonlat(source.crs).transform(lons, lats)
+    want = ~source.contains(x, y)
     np.testing.assert_array_equal(search_grid(source, target)[2], want)
     assert want.any()
     assert not want.all()

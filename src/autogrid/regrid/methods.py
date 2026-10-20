@@ -15,6 +15,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import sparse
 
+from autogrid.crs import trf_from_lonlat
 from autogrid.grids import Grid
 from autogrid.grids.axes import FULL_TURN, normalise_longitude
 from autogrid.regrid import grid_search
@@ -143,9 +144,9 @@ def _find_target_points(
         the source CRS, with x shifted by whole turns to match the source cells.
     """
     lon, lat = target.lonlat_slice(slice(None))
-    x, y = source.trf_from_lonlat.transform(lon.ravel(), lat.ravel())
+    x, y = trf_from_lonlat(source.crs).transform(lon.ravel(), lat.ravel())
     x = normalise_longitude(x, source.x_bounds, source.crs)
-    rows = np.flatnonzero(source.contains(x, y, prenormalised=True))
+    rows = np.flatnonzero(source.contains(x, y))
     return rows, x[rows], y[rows]
 
 

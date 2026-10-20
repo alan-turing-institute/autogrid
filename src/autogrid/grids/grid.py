@@ -3,13 +3,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
-from pyproj import CRS, Transformer
+from pyproj import CRS
 
 from autogrid.crs import (
     CRSLike,
-    from_lonlat_transformer,
     supported_crs,
-    to_lonlat_transformer,
+    trf_from_lonlat,
+    trf_to_lonlat,
 )
 from autogrid.grids.axes import (
     FULL_TURN,
@@ -25,13 +25,13 @@ if TYPE_CHECKING:
 class Grid:
     """A rectilinear grid of points in a given coordinate reference system (CRS).
 
-    The grid is defined by 1D x and y points and a CRS. For geographic CRSs, x
-    is longitude and y is latitude, whatever the CRS's own axis order.
+    The grid is defined by 1D x and y points and a CRS. For geographic CRSs, x is
+    longitude and y is latitude regardless of the order of axes in the CRS.
 
-    Only some CRSs are supported: latitude-longitude and rotated pole CRSs in
-    degrees, and projected CRSs in metres, on the WGS 84 datum or a bare
-    ellipsoid, with a Greenwich prime meridian. Reproject coordinates in any
-    other CRS into one of these first.
+    Only some CRSs are supported: latitude-longitude and rotated pole CRSs in degrees,
+    and projected CRSs in metres, on the WGS 84 datum or a bare ellipsoid, with a
+    Greenwich prime meridian. Reproject coordinates in any other CRS into one of these
+    first.
     """
 
     def __init__(
@@ -47,16 +47,16 @@ class Grid:
         Args:
             x_points: 1D array of x coordinates of grid points.
             y_points: 1D array of y coordinates of grid points.
-            crs: The CRS of the grid, as anything pyproj.CRS.from_user_input
-                accepts, e.g. "EPSG:6931", 6931 or a pyproj CRS. It must be
-                one of the supported CRSs.
-            name: Optional label for display, e.g. "EASE2 south 25p0km". It is
-                not part of the grid's identity, so is ignored by ==.
+            crs: The CRS of the grid, as anything pyproj.CRS.from_user_input accepts,
+                e.g. "EPSG:6931", 6931 or a pyproj CRS. It must be one of the supported
+                CRSs.
+            name: Optional label for display, e.g. "EASE2 south 25p0km". It is not part
+                of the grid's identity, so is ignored by ==.
 
         Raises:
-            ValueError: If the CRS is not supported, or either set of points is
-                not 1D, has fewer than two points, contains non-finite values or
-                is not strictly monotonic.
+            ValueError: If the CRS is not supported, or either set of points is not 1D,
+                has fewer than two points, contains non-finite values or is not strictly
+                monotonic.
         """
         self.crs: CRS = supported_crs(crs)
         self.name = name
@@ -92,20 +92,15 @@ class Grid:
         """Whether x and y are longitude and latitude (possibly rotated)."""
         return self.crs.is_geographic
 
-    @property
+    @cached_property
     def latitudes(self) -> NDArray[np.float64]:
         """True latitude of each grid point in degrees, with shape (ny, nx)."""
-        return self.lonlat[1]
-
-    @property
-    def longitudes(self) -> NDArray[np.float64]:
-        """True longitude of each grid point in degrees east, with shape (ny, nx)."""
-        return self.lonlat[0]
+        return self.lonlat_slice(slice(None))[1]
 
     @cached_property
-    def lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Return the longitude and latitude of each grid point, with shape (ny, nx)."""
-        return self.lonlat_slice(slice(None))
+    def longitudes(self) -> NDArray[np.float64]:
+        """True longitude of each grid point in degrees east, with shape (ny, nx)."""
+        return self.lonlat_slice(slice(None))[0]
 
     @property
     def projection(self) -> "ccrs.Projection":
@@ -128,54 +123,28 @@ class Grid:
         return len(self.y_points) * len(self.x_points)
 
     @cached_property
-    def trf_from_lonlat(self) -> Transformer:
-        """Transformer from longitude and latitude to the grid's x and y."""
-        return from_lonlat_transformer(self.crs)
-
-    @cached_property
-    def trf_to_lonlat(self) -> Transformer:
-        """Transformer from the grid's x and y to longitude and latitude."""
-        return to_lonlat_transformer(self.crs)
-
-    @cached_property
-    def x(self) -> NDArray[np.float64]:
-        """x coordinate of each grid point, with shape (ny, nx)."""
-        return np.broadcast_to(self.x_points, self.shape)
-
-    @cached_property
     def x_bounds(self) -> NDArray[np.float64]:
         """x coordinate bounds for each grid cell, with shape (nx, 2)."""
         return guess_bounds(self.x_points)
-
-    @cached_property
-    def y(self) -> NDArray[np.float64]:
-        """y coordinate of each grid point, with shape (ny, nx)."""
-        return np.broadcast_to(self.y_points[:, np.newaxis], self.shape)
 
     @cached_property
     def y_bounds(self) -> NDArray[np.float64]:
         """y coordinate bounds for each grid cell, with shape (ny, 2)."""
         return guess_bounds(self.y_points)
 
-    def contains(
-        self, x: ArrayLike, y: ArrayLike, *, prenormalised: bool = False
-    ) -> NDArray[np.bool_]:
+    def contains(self, x: ArrayLike, y: ArrayLike) -> NDArray[np.bool_]:
         """Flag points that lie within the cells of the grid.
 
         Args:
             x: x coordinates of the points in the grid's CRS. For a geographic
                 CRS, these are compared modulo a full turn of longitude.
             y: y coordinates of the points in the grid's CRS, of the same shape.
-            prenormalised: Whether x has already been shifted to match the cells
-                with normalise_longitude, so need not be shifted again.
 
         Returns:
             A boolean array with the shape of the points, which is False for
             points outside the cell bounds or with non-finite coordinates.
         """
-        x = np.asarray(x, dtype=np.float64)
-        if not prenormalised:
-            x = normalise_longitude(x, self.x_bounds, self.crs)
+        x = normalise_longitude(x, self.x_bounds, self.crs)
         y = np.asarray(y, dtype=np.float64)
         # NaN fails every comparison, so is never inside
         inside = (y >= np.min(self.y_bounds)) & (y <= np.max(self.y_bounds))
@@ -198,7 +167,8 @@ class Grid:
             Tuple of (longitude, latitude) arrays in degrees, with the shape of
             the block of rows.
         """
-        return self.trf_to_lonlat.transform(self.x[rows], self.y[rows])
+        x, y = np.meshgrid(self.x_points, self.y_points[rows])
+        return trf_to_lonlat(self.crs).transform(x, y)
 
     @classmethod
     def from_latlon(
@@ -241,7 +211,7 @@ class Grid:
             )
             raise ValueError(msg)
         crs = supported_crs(crs)
-        x, y = from_lonlat_transformer(crs).transform(longitudes, latitudes)
+        x, y = trf_from_lonlat(crs).transform(longitudes, latitudes)
         if crs.is_geographic:
             # Start every row on the same branch as the first, e.g. 180 and -180,
             # then keep longitudes monotonic across the dateline, e.g. 179.5, -179.5

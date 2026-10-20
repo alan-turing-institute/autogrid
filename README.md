@@ -162,7 +162,7 @@ The `"nearest_great_circle"` argument to `Regridder` uses this search.
 ### Plot a field on its own projection
 
 `Grid.projection` is the cartopy projection of a grid's CRS, which needs the `plot` extra
-(`pip install "autogrid[plot]"`). Its x and y coordinates can be plotted on map axes directly.
+(`pip install "autogrid[plot]"`). Its x and y points can be plotted on map axes directly.
 
 ```python
 import matplotlib.pyplot as plt
@@ -174,7 +174,9 @@ grid = build_ease2("south", "25p0km", shape=(432, 432))
 field = np.cos(np.deg2rad(grid.latitudes)) * np.sin(np.deg2rad(grid.longitudes))
 
 ax = plt.axes(projection=grid.projection)
-ax.pcolormesh(grid.x, grid.y, field, transform=grid.projection, cmap="RdBu_r")
+ax.pcolormesh(
+    grid.x_points, grid.y_points, field, transform=grid.projection, cmap="RdBu_r"
+)
 ax.coastlines()
 plt.savefig("field.png")
 ```

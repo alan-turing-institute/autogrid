@@ -187,7 +187,7 @@ def test_nearest_great_circle_differs_from_nearest_near_pole(
     latlon: Grid, south: Grid
 ) -> None:
     regridder = Regridder(latlon, south)
-    flat = np.arange(latlon.x.size, dtype=np.float64).reshape(latlon.shape)
+    flat = np.arange(latlon.size, dtype=np.float64).reshape(latlon.shape)
     differ = regridder.apply(flat, "nearest") != regridder.apply(
         flat, "nearest_great_circle"
     )
@@ -229,7 +229,7 @@ def test_outside_matches_direct_transform() -> None:
     regridder = Regridder(source, target)
     # Transform straight from the target CRS, not through latitude and longitude
     x, y = Transformer.from_crs(32630, 4326, always_xy=True).transform(
-        target.x, target.y
+        *np.meshgrid(target.x_points, target.y_points)
     )
     want = ~source.contains(x, y)
     np.testing.assert_array_equal(regridder.outside("linear"), want)

@@ -240,7 +240,7 @@ def test_contains_includes_dateline_gap_of_circular_grid(latlon: Grid) -> None:
 
 def test_contains_keeps_projected_shape() -> None:
     grid = build_ease2("south", "25p0km", shape=(432, 432))
-    inside = grid.contains(grid.x, grid.y)
+    inside = grid.contains(*np.meshgrid(grid.x_points, grid.y_points))
     assert inside.shape == grid.shape
     assert inside.all()
     assert not grid.contains([1e8], [0.0]).any()

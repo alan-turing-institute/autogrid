@@ -6,8 +6,10 @@ building a KD-tree over all of its points as points.nearest_indices does.
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from pyproj import Transformer
 from scipy.spatial import KDTree
 
+from autogrid.crs import trf_from_lonlat, trf_to_lonlat
 from autogrid.grids import Grid
 from autogrid.grids.axes import normalise_longitude
 from autogrid.regrid.sphere import check_points, unit_vectors
@@ -77,7 +79,7 @@ def _search(
     indices are arbitrary.
     """
     lats, lons = target_lats.ravel(), target_lons.ravel()
-    x, y = source.trf_from_lonlat.transform(lons, lats)
+    x, y = trf_from_lonlat(source.crs).transform(lons, lats)
     x = normalise_longitude(x, source.x_bounds, source.crs)
     iy = nearest_index(source.y_points, y)
     ix = nearest_index(source.x_points, x)
@@ -87,13 +89,14 @@ def _search(
     # The nearest point to one outside the grid is usually on its edge, where a search
     # from the nearest point in the source CRS can stop at the wrong corner, so start
     # from the nearest edge point instead
-    outside = ~source.contains(x, y, prenormalised=True)
+    outside = ~source.contains(x, y)
     from_edge = outside & searchable
     if from_edge.any():
         edge_iy, edge_ix, tree = edge
         _, k = tree.query(targets[from_edge], workers=-1)
         iy[from_edge], ix[from_edge] = edge_iy[k], edge_ix[k]
 
+    to_lonlat = trf_to_lonlat(source.crs)
     active = np.flatnonzero(searchable)
     while len(active):
         # Move each active point to whichever of its cell and eight neighbours is
@@ -103,7 +106,8 @@ def _search(
         y = np.clip(iy[active, np.newaxis] + _NEIGHBOURS[:, 0], 0, ny - 1)
         x = ix[active, np.newaxis] + _NEIGHBOURS[:, 1]
         x = x % nx if source.is_geographic else np.clip(x, 0, nx - 1)
-        d = ((point_vectors(source, y, x) - targets[active, np.newaxis]) ** 2).sum(-1)
+        vectors = point_vectors(source, y, x, to_lonlat)
+        d = ((vectors - targets[active, np.newaxis]) ** 2).sum(-1)
         k = np.argmin(np.where(np.isnan(d), np.inf, d), axis=1)
         moved = k > 0
         active, rows, k = active[moved], np.flatnonzero(moved), k[moved]
@@ -170,7 +174,7 @@ def edge_tree(source: Grid) -> tuple[NDArray[np.intp], NDArray[np.intp], KDTree]
     rows, cols = np.arange(ny), np.arange(nx)
     iy = np.concatenate([np.zeros_like(cols), np.full_like(cols, ny - 1), rows, rows])
     ix = np.concatenate([cols, cols, np.zeros_like(rows), np.full_like(rows, nx - 1)])
-    vectors = point_vectors(source, iy, ix)
+    vectors = point_vectors(source, iy, ix, trf_to_lonlat(source.crs))
     valid = np.isfinite(vectors).all(-1)
     return iy[valid], ix[valid], KDTree(vectors[valid])
 
@@ -187,12 +191,16 @@ def nearest_index(
 
 
 def point_vectors(
-    grid: Grid, iy: NDArray[np.intp], ix: NDArray[np.intp]
+    grid: Grid,
+    iy: NDArray[np.intp],
+    ix: NDArray[np.intp],
+    to_lonlat: Transformer,
 ) -> NDArray[np.float64]:
     """Unit vectors of the grid points at rows iy and columns ix, of any shape.
 
-    Grid.latitudes and Grid.longitudes come from the same transform, so distances
-    match those of a KD-tree over them exactly.
+    The transformer is trf_to_lonlat(grid.crs), passed in so that the search
+    builds it only once. Grid.latitudes and Grid.longitudes come from the same
+    transform, so distances match those of a KD-tree over them exactly.
     """
-    lon, lat = grid.trf_to_lonlat.transform(grid.x_points[ix], grid.y_points[iy])
+    lon, lat = to_lonlat.transform(grid.x_points[ix], grid.y_points[iy])
     return unit_vectors(lat, lon).reshape(*iy.shape, 3)

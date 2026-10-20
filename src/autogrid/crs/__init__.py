@@ -1,13 +1,13 @@
 from autogrid.crs.crs import (
     CRSLike,
-    from_lonlat_transformer,
     supported_crs,
-    to_lonlat_transformer,
+    trf_from_lonlat,
+    trf_to_lonlat,
 )
 
 __all__ = [
     "CRSLike",
-    "from_lonlat_transformer",
     "supported_crs",
-    "to_lonlat_transformer",
+    "trf_from_lonlat",
+    "trf_to_lonlat",
 ]

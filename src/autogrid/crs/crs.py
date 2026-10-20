@@ -49,7 +49,7 @@ def supported_crs(crs: CRSLike) -> CRS:
         reason = f"must be in metres, but has units {units}"
     elif base.prime_meridian is not None and base.prime_meridian.longitude != 0:
         reason = f"has prime meridian {base.prime_meridian.name}"
-    elif not (is_wgs84(crs) or _is_bare_ellipsoid(base)):
+    elif not (is_wgs84(crs) or is_bare_ellipsoid(base)):
         datum = base.datum.name if base.datum is not None else None
         reason = f"has datum {datum!r}"
     else:
@@ -78,12 +78,6 @@ def base_geographic_crs(crs: CRS) -> CRS:
     return base
 
 
-def is_wgs84(crs: CRS) -> bool:
-    """Whether a CRS is on the WGS 84 datum, or any of its realisations."""
-    datum = base_geographic_crs(crs).datum
-    return datum is not None and datum.name.startswith("World Geodetic System 1984")
-
-
 def ellipsoid_axes(crs: CRS) -> tuple[float, float]:
     """Return the semi-major and semi-minor axes of a CRS's ellipsoid, in metres."""
     ellipsoid = base_geographic_crs(crs).ellipsoid
@@ -93,7 +87,7 @@ def ellipsoid_axes(crs: CRS) -> tuple[float, float]:
     return ellipsoid.semi_major_metre, ellipsoid.semi_minor_metre
 
 
-def _is_bare_ellipsoid(base: CRS) -> bool:
+def is_bare_ellipsoid(base: CRS) -> bool:
     """Whether a geographic CRS is no more than its ellipsoid, with no datum.
 
     PROJ names such datums variously, e.g. "unknown", "undefined" or "Not
@@ -107,11 +101,17 @@ def _is_bare_ellipsoid(base: CRS) -> bool:
     return base.equals(bare, ignore_axis_order=True)
 
 
-def from_lonlat_transformer(crs: CRS) -> Transformer:
+def is_wgs84(crs: CRS) -> bool:
+    """Whether a CRS is on the WGS 84 datum, or any of its realisations."""
+    datum = base_geographic_crs(crs).datum
+    return datum is not None and datum.name.startswith("World Geodetic System 1984")
+
+
+def trf_from_lonlat(crs: CRS) -> Transformer:
     """Return a transformer from true longitude and latitude to a CRS's x and y."""
     return Transformer.from_crs(base_geographic_crs(crs), crs, always_xy=True)
 
 
-def to_lonlat_transformer(crs: CRS) -> Transformer:
+def trf_to_lonlat(crs: CRS) -> Transformer:
     """Return a transformer from a CRS's x and y to true longitude and latitude."""
     return Transformer.from_crs(crs, base_geographic_crs(crs), always_xy=True)
