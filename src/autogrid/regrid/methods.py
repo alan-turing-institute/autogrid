@@ -2,8 +2,9 @@
 
 A method returns a sparse matrix with shape (target size, source size), whose rows give
 the weight of each source point in each target point, both flattened. Target points
-outside the source grid have empty rows, and weights are never explicitly zero, so that
-only the source points that contribute to a target point can make it NaN.
+outside the source grid have empty rows. The Regridder drops explicitly zero weights, so
+that only the source points that contribute to a target point can make it NaN, and a
+method need not drop them itself.
 
 A Regridder takes either the name of one of these methods or any function like them. To
 add a named method, write a function like these and add it to Method and METHODS.
@@ -60,7 +61,6 @@ def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
     uncovered = weights.sum(axis=1) < 1 - MIN_OVERLAP_FRACTION
     weights.data[np.repeat(uncovered, np.diff(weights.indptr))] = 0
     weights.data[weights.data < MIN_OVERLAP_FRACTION] = 0
-    weights.eliminate_zeros()
     return weights
 
 
@@ -77,13 +77,10 @@ def linear(source: Grid, target: Grid) -> sparse.csr_array:
     cols = [y0 * nx + x0, y0 * nx + x1, y1 * nx + x0, y1 * nx + x1]
     weights = [(1 - fy) * (1 - fx), (1 - fy) * fx, fy * (1 - fx), fy * fx]
     # Each target point gets an entry for the four source points around it
-    matrix = sparse.csr_array(
+    return sparse.csr_array(
         (np.concatenate(weights), (np.tile(rows, 4), np.concatenate(cols))),
         shape=(target.size, source.size),
     )
-    # Drop zero weights if there are any
-    matrix.eliminate_zeros()
-    return matrix
 
 
 def nearest(source: Grid, target: Grid) -> sparse.csr_array:
@@ -176,8 +173,8 @@ def _overlaps(
     """Fraction of each target cell covered by each source cell along one axis.
 
     Args:
-        source_bounds: (n, 2) bounds of the source cells, which must be monotonic.
-        target_bounds: (m, 2) bounds of the target cells, which must be monotonic.
+        source_bounds: (n, 2) bounds of the source cells.
+        target_bounds: (m, 2) bounds of the target cells.
         period: Period of the axis, e.g. a full turn of longitude, if cells overlap
             modulo the period.
 
@@ -197,15 +194,27 @@ def _overlaps(
         cols = np.tile(cols, 2)
     order = np.argsort(s_lo)
     s_lo, s_hi, cols = s_lo[order], s_hi[order], cols[order]
-    # The source cells overlapping a target cell run from the first that ends
-    # after it starts to the last that starts before it ends
+    # Source cells are sorted so those overlapping a given target cell are contiguous
+    # For each target cell, start[idx_target] is the index of the first overlapping cell
+    # in this sorted array and counts[idx_target] is the number of overlapping cells.
     start = np.searchsorted(s_hi, t_lo, side="right")
     counts = np.maximum(np.searchsorted(s_lo, t_hi, side="left") - start, 0)
-    rows = np.repeat(np.arange(len(t_lo)), counts)
-    k = np.repeat(start - np.cumsum(counts) + counts, counts) + np.arange(counts.sum())
-    overlap = np.minimum(t_hi[rows], s_hi[k]) - np.maximum(t_lo[rows], s_lo[k])
+    # The target cell of each overlap, e.g. counts [2, 0, 3] give [0, 0, 2, 2, 2]
+    target_overlap_indices = np.repeat(np.arange(len(t_lo)), counts)
+    # The sorted source cell of each overlap, e.g. start [1, 4, 0] and counts [2, 0, 3]
+    # give [1, 2, 0, 1, 2]
+    source_overlap_indices = np.repeat(
+        start - np.cumsum(counts) + counts, counts
+    ) + np.arange(counts.sum())
+    # Now calculate the overlap of each source cell with its target cell
+    overlap = np.minimum(
+        t_hi[target_overlap_indices], s_hi[source_overlap_indices]
+    ) - np.maximum(t_lo[target_overlap_indices], s_lo[source_overlap_indices])
     return sparse.csr_array(
-        (overlap / (t_hi - t_lo)[rows], (rows, cols[k])),
+        (
+            overlap / (t_hi - t_lo)[target_overlap_indices],
+            (target_overlap_indices, cols[source_overlap_indices]),
+        ),
         shape=(len(t_lo), len(source_bounds)),
     )
 
