@@ -100,23 +100,19 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
 def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
     """Nearest source point along the Earth's surface, from points.nearest_indices.
 
-    Target points are outside as for linear, in the source CRS. Source points with no
-    latitude and longitude, such as those beyond the valid area of the source CRS, are
-    never nearest.
+    Target points are outside as for linear, in the source CRS.
     """
     rows, _, _ = _find_target_points(source, target)
     if not len(rows):
         return sparse.csr_array((target.size, source.size))
-    source_lats, source_lons = source.latitudes.ravel(), source.longitudes.ravel()
-    valid = np.flatnonzero(np.isfinite(source_lats) & np.isfinite(source_lons))
-    (k,) = nearest_indices(
-        source_lats[valid],
-        source_lons[valid],
+    (cols,) = nearest_indices(
+        source.latitudes.ravel(),
+        source.longitudes.ravel(),
         target.latitudes.ravel()[rows],
         target.longitudes.ravel()[rows],
     )
     return sparse.csr_array(
-        (np.ones(len(rows)), (rows, valid[k])), shape=(target.size, source.size)
+        (np.ones(len(rows)), (rows, cols)), shape=(target.size, source.size)
     )
 
 

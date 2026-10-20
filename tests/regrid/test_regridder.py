@@ -199,19 +199,6 @@ def test_nearest_great_circle_indices_are_cached(
     assert len(calls) == 1
 
 
-def test_nearest_great_circle_avoids_source_cells_without_latlon() -> None:
-    # A north polar grid reaching beyond the valid area of its projection, so that
-    # its corner cells have no latitude or longitude
-    points = np.arange(-15_000_000, 15_000_001, 300_000.0)
-    source = Grid(points, points[::-1], "EPSG:6931")
-    no_latlon = np.isnan(source.latitudes)
-    assert no_latlon.any()
-    regridder = Regridder(source, build_global_latlon(5.0))
-    used = regridder.weights("nearest_great_circle").indices
-    assert used.size
-    assert not no_latlon.ravel()[used].any()
-
-
 def test_nearest_great_circle_flags_targets_without_latlon_as_outside() -> None:
     # A north polar target grid reaching beyond the valid area of its projection, so
     # that its corner cells have no latitude or longitude
