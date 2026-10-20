@@ -1,4 +1,7 @@
 from autogrid.crs.crs import (
+    FULL_TURN,
+    MAX_LATITUDE,
+    MAX_LONGITUDE,
     CRSLike,
     supported_crs,
     trf_from_lonlat,
@@ -6,6 +9,9 @@ from autogrid.crs.crs import (
 )
 
 __all__ = [
+    "FULL_TURN",
+    "MAX_LATITUDE",
+    "MAX_LONGITUDE",
     "CRSLike",
     "supported_crs",
     "trf_from_lonlat",

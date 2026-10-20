@@ -2,8 +2,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from pyproj import CRS
 
-# One full turn of longitude, in degrees
-FULL_TURN = 360.0
+from autogrid.crs import FULL_TURN
 
 
 def check_axis_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:

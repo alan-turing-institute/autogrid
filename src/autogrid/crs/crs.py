@@ -31,7 +31,13 @@ CRSLike = int | str | dict[str, Any] | CRS
 GEOGRAPHIC_MAPPINGS = ("latitude_longitude", "rotated_latitude_longitude")
 
 # The CRS of every Grid's longitudes and latitudes
-LONLAT = CRS.from_epsg(4326)
+LONLAT_CRS = CRS.from_epsg(4326)
+
+# One full turn of longitude, in degrees
+FULL_TURN = 360.0
+# Largest latitude and longitude, in degrees
+MAX_LATITUDE = 90.0
+MAX_LONGITUDE = 180.0
 
 
 def supported_crs(crs: CRSLike) -> CRS:
@@ -67,10 +73,10 @@ def supported_crs(crs: CRSLike) -> CRS:
 @functools.cache
 def trf_from_lonlat(crs: CRS) -> Transformer:
     """Return a transformer from WGS 84 longitude and latitude to a CRS's x and y."""
-    return Transformer.from_crs(LONLAT, crs, always_xy=True)
+    return Transformer.from_crs(LONLAT_CRS, crs, always_xy=True)
 
 
 @functools.cache
 def trf_to_lonlat(crs: CRS) -> Transformer:
     """Return a transformer from a CRS's x and y to WGS 84 longitude and latitude."""
-    return Transformer.from_crs(crs, LONLAT, always_xy=True)
+    return Transformer.from_crs(crs, LONLAT_CRS, always_xy=True)

@@ -17,8 +17,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import sparse
 
+from autogrid.crs import FULL_TURN, MAX_LATITUDE
 from autogrid.grids import Grid
-from autogrid.grids.axes import FULL_TURN
 from autogrid.points import nearest_indices
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
@@ -50,8 +50,8 @@ def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
         x = _overlaps(source.x_bounds, target.x_bounds, period=FULL_TURN)
         # Cell areas on a sphere are proportional to the change in sin(latitude)
         y = _overlaps(
-            np.sin(np.deg2rad(np.clip(source.y_bounds, -90.0, 90.0))),
-            np.sin(np.deg2rad(np.clip(target.y_bounds, -90.0, 90.0))),
+            np.sin(np.deg2rad(np.clip(source.y_bounds, -MAX_LATITUDE, MAX_LATITUDE))),
+            np.sin(np.deg2rad(np.clip(target.y_bounds, -MAX_LATITUDE, MAX_LATITUDE))),
         )
     else:
         x = _overlaps(source.x_bounds, target.x_bounds)
