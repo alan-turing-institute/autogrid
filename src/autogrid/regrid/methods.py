@@ -69,7 +69,7 @@ def linear(source: Grid, target: Grid) -> sparse.csr_array:
     Target points between the outermost source points and the edge of the source cells
     take the value of the edge cell.
     """
-    rows, x, y, _, _ = _find_target_points(source, target)
+    rows, y, x, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
     y0, y1, fy = _bracket(source.y_points, y)
     nx = source.shape[1]
@@ -87,7 +87,7 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
 
     Ties go to the source point with the lower coordinate, as in iris.
     """
-    rows, x, y, _, _ = _find_target_points(source, target)
+    rows, y, x, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
     y0, y1, fy = _bracket(source.y_points, y)
     # Each target point gets an entry for the nearest source point
@@ -102,19 +102,19 @@ def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
 
     Target points are outside as for linear, in the source CRS.
     """
-    rows, _, _, flat_target_lons, flat_target_lats = _find_target_points(source, target)
+    rows, _, _, flat_target_lats, flat_target_lons = _find_target_points(source, target)
     if not len(rows):
         return sparse.csr_array((target.size, source.size))
-    flat_source_lons, flat_source_lats = (coords.ravel() for coords in source.lonlat())
+    flat_source_lats, flat_source_lons = (coords.ravel() for coords in source.latlon())
     # Exclude grid points beyond the valid area of a projection
     flat_source_indices = np.flatnonzero(
-        np.isfinite(flat_source_lons) & np.isfinite(flat_source_lats)
+        np.isfinite(flat_source_lats) & np.isfinite(flat_source_lons)
     )
     (nearest,) = nearest_indices(
-        flat_source_lats[flat_source_indices],
-        flat_source_lons[flat_source_indices],
-        flat_target_lats,
-        flat_target_lons,
+        source_lats=flat_source_lats[flat_source_indices],
+        source_lons=flat_source_lons[flat_source_indices],
+        target_lats=flat_target_lats,
+        target_lons=flat_target_lons,
     )
     return sparse.csr_array(
         (np.ones(len(rows)), (rows, flat_source_indices[nearest])),
@@ -160,14 +160,14 @@ def _find_target_points(
     """Find the target points inside the source cells, in the source CRS.
 
     Returns:
-        Tuple of the flat target index of each point inside, its x and y in the source
-        CRS, with x shifted by whole turns to match the source cells, and its longitude
-        and latitude.
+        Tuple of the flat target index of each point inside, its y and x in the source
+        CRS, with x shifted by whole turns to match the source cells, and its latitude
+        and longitude.
     """
-    flat_lons, flat_lats = (coords.ravel() for coords in target.lonlat())
-    x, y = source.to_xy(flat_lons, flat_lats)
-    inside = np.flatnonzero(source.contains(x, y))
-    return inside, x[inside], y[inside], flat_lons[inside], flat_lats[inside]
+    flat_lats, flat_lons = (coords.ravel() for coords in target.latlon())
+    y, x = source.to_yx(flat_lats, flat_lons)
+    inside = np.flatnonzero(source.contains(y=y, x=x))
+    return inside, y[inside], x[inside], flat_lats[inside], flat_lons[inside]
 
 
 def _overlaps(

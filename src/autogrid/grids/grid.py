@@ -107,13 +107,15 @@ class Grid:
         """y coordinate bounds for each grid cell, with shape (ny, 2)."""
         return guess_bounds(self.y_points)
 
-    def contains(self, x: ArrayLike, y: ArrayLike) -> NDArray[np.bool_]:
+    def contains(self, *, x: ArrayLike, y: ArrayLike) -> NDArray[np.bool_]:
         """Flag points that lie within the cells of the grid.
 
+        If this is a geographic grid, x is shifted by whole turns of longitude to match
+        the grid cells.
+
         Args:
-            x: x coordinates of the points in the grid's CRS. For a geographic
-                CRS, these are compared modulo a full turn of longitude.
-            y: y coordinates of the points in the grid's CRS, of the same shape.
+            x: x coordinates of the points in the grid's CRS, same shape as y.
+            y: y coordinates of the points in the grid's CRS, same shape as x.
 
         Returns:
             A boolean array with the shape of the points, which is False for
@@ -127,36 +129,37 @@ class Grid:
             return inside & np.isfinite(x)
         return inside & (x >= np.min(self.x_bounds)) & (x <= np.max(self.x_bounds))
 
-    def lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """WGS 84 longitude and latitude of the grid points.
+    def latlon(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """WGS 84 latitude and longitude of the grid points.
 
         To reduce Grid memory usage, these are recomputed on each call.
 
         Returns:
-            Tuple of (longitude, latitude) arrays in degrees, with shape (ny, nx).
+            Tuple of (latitude, longitude) arrays in degrees, with shape (ny, nx).
             Points beyond the valid area of a projection are not finite.
         """
         x, y = np.meshgrid(self.x_points, self.y_points)
-        return trf_to_lonlat(self.crs).transform(x, y)
+        longitudes, latitudes = trf_to_lonlat(self.crs).transform(x, y)
+        return latitudes, longitudes
 
-    def to_xy(
-        self, longitudes: ArrayLike, latitudes: ArrayLike
+    def to_yx(
+        self, latitudes: ArrayLike, longitudes: ArrayLike
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Convert the given longitudes and latitudes into CRS coordinates of the grid.
+        """Convert the given latitudes and longitudes into CRS coordinates of the grid.
 
         For a geographic CRS, x is shifted by whole turns to within half a turn of the
         middle of the grid's cells.
 
         Args:
-            longitudes: Longitude of each point in degrees east, of any shape.
-            latitudes: Latitude of each point in degrees, of the same shape.
+            latitudes: Latitude of each point in degrees, of any shape.
+            longitudes: Longitude of each point in degrees east, of the same shape.
 
         Returns:
-            Tuple of (x, y) arrays in the grid's CRS, with the shape of the points.
+            Tuple of (y, x) arrays in the grid's CRS, with the shape of the points.
             Points beyond the valid area of a projection are not finite.
         """
         x, y = trf_from_lonlat(self.crs).transform(longitudes, latitudes)
-        return normalise_longitude(x, self.x_bounds, self.crs), np.asarray(y)
+        return np.asarray(y), normalise_longitude(x, self.x_bounds, self.crs)
 
     @classmethod
     def from_latlon(
@@ -164,6 +167,7 @@ class Grid:
         latitudes: ArrayLike,
         longitudes: ArrayLike,
         crs: CRSLike,
+        *,
         tolerance: float = 0.01,
     ) -> "Grid":
         """Initialise a Grid from the latitude and longitude of each of its points.

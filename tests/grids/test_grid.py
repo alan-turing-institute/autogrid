@@ -75,7 +75,7 @@ def test_grid_points_are_copied() -> None:
     ids=["latlon", "ease2-north", "ease2-global", "rotated"],
 )
 def test_from_latlon_recovers_grid(grid: Grid) -> None:
-    lon, lat = grid.lonlat()
+    lat, lon = grid.latlon()
     recovered = Grid.from_latlon(lat, lon, grid.crs)
     assert type(recovered) is Grid
     assert recovered.shape == grid.shape
@@ -99,7 +99,7 @@ def test_from_latlon_handles_rows_starting_on_different_branches() -> None:
 
 
 def test_from_latlon_rejects_wrong_crs() -> None:
-    lon, lat = build_ease2("north", "25p0km", shape=(432, 432)).lonlat()
+    lat, lon = build_ease2("north", "25p0km", shape=(432, 432)).latlon()
     with pytest.raises(ValueError, match="not on a rectilinear grid"):
         Grid.from_latlon(lat, lon, "EPSG:4326")
 
@@ -211,27 +211,27 @@ def test_grids_with_different_crs_are_not_equal() -> None:
 
 
 def test_rotated_grid_latlon_is_unrotated() -> None:
-    lon, lat = Grid([0.0, 1.0], [0.0, 1.0], ROTATED).lonlat()
+    lat, lon = Grid([0.0, 1.0], [0.0, 1.0], ROTATED).latlon()
     np.testing.assert_allclose(lat[0, 0], 52.5)
     np.testing.assert_allclose(lon[0, 0], -2.5)
 
 
 def test_sphere_grid_latlon_is_unshifted() -> None:
-    lon, lat = Grid([-2.0, -1.0], [54.0, 55.0], SPHERE).lonlat()
+    lat, lon = Grid([-2.0, -1.0], [54.0, 55.0], SPHERE).latlon()
     np.testing.assert_allclose(lon[0, 0], -2.0)
     np.testing.assert_allclose(lat[0, 0], 54.0)
 
 
 def test_grid_latlon_is_shifted_to_wgs84() -> None:
     # OSGB 1936 coordinates are about 100 m from WGS 84 ones in northern England
-    lon, lat = Grid([-2.0, -1.0], [54.0, 55.0], "EPSG:4277").lonlat()
+    lat, lon = Grid([-2.0, -1.0], [54.0, 55.0], "EPSG:4277").latlon()
     np.testing.assert_allclose(lon[0, 0], -2.0015, atol=1e-4)
     np.testing.assert_allclose(lat[0, 0], 54.0002, atol=1e-4)
 
 
 def test_grid_latlon_is_from_greenwich() -> None:
     grid = Grid([0.0, 1.0], [48.0, 49.0], "+proj=longlat +ellps=clrk80ign +pm=paris")
-    lon, _ = grid.lonlat()
+    _, lon = grid.latlon()
     np.testing.assert_allclose(lon[0, 0], 2.337229, atol=1e-6)
 
 
@@ -249,40 +249,41 @@ def test_contains_uses_cell_bounds() -> None:
     x = [-0.5, -0.6, 2.5, 2.6, 1.0, 1.0, 1.0, np.nan]
     y = [10.0, 10.0, 10.0, 10.0, 9.5, 11.6, np.nan, 10.0]
     np.testing.assert_array_equal(
-        grid.contains(x, y), [True, False, True, False, True, False, False, False]
+        grid.contains(y=y, x=x), [True, False, True, False, True, False, False, False]
     )
 
 
 def test_contains_wraps_longitude() -> None:
     grid = Grid(np.arange(170.5, 200, 1.0), [0.0, 1.0], "EPSG:4326")
     np.testing.assert_array_equal(
-        grid.contains([-170.0, 170.0, 0.0], [0.0, 0.0, 0.0]), [True, True, False]
+        grid.contains(y=[0.0, 0.0, 0.0], x=[-170.0, 170.0, 0.0]), [True, True, False]
     )
 
 
 def test_contains_includes_dateline_gap_of_circular_grid(latlon: Grid) -> None:
     np.testing.assert_array_equal(
-        latlon.contains([-179.9, 179.9, 180.0, 540.0, np.inf], [0.0] * 5),
+        latlon.contains(y=[0.0] * 5, x=[-179.9, 179.9, 180.0, 540.0, np.inf]),
         [True, True, True, True, False],
     )
 
 
 def test_contains_keeps_projected_shape() -> None:
     grid = build_ease2("south", "25p0km", shape=(432, 432))
-    inside = grid.contains(*np.meshgrid(grid.x_points, grid.y_points))
+    x, y = np.meshgrid(grid.x_points, grid.y_points)
+    inside = grid.contains(y=y, x=x)
     assert inside.shape == grid.shape
     assert inside.all()
-    assert not grid.contains([1e8], [0.0]).any()
+    assert not grid.contains(y=[0.0], x=[1e8]).any()
 
 
-def test_to_xy_recovers_grid_points(south: Grid) -> None:
-    x, y = south.to_xy(*south.lonlat())
+def test_to_yx_recovers_grid_points(south: Grid) -> None:
+    y, x = south.to_yx(*south.latlon())
     np.testing.assert_allclose(x, np.broadcast_to(south.x_points, south.shape))
     np.testing.assert_allclose(y, np.broadcast_to(south.y_points[:, None], south.shape))
 
 
-def test_to_xy_normalises_longitude() -> None:
+def test_to_yx_normalises_longitude() -> None:
     grid = Grid(np.arange(170.5, 200, 1.0), [0.0, 1.0], "EPSG:4326")
-    x, y = grid.to_xy([-170.0, 10.0], [0.0, 1.0])
+    y, x = grid.to_yx([0.0, 1.0], [-170.0, 10.0])
     np.testing.assert_allclose(x, [190.0, 10.0])
     np.testing.assert_allclose(y, [0.0, 1.0])

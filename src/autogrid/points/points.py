@@ -16,6 +16,7 @@ _CHUNK_ELEMENTS = 2**24
 
 
 def nearest_indices(
+    *,
     source_lats: ArrayLike,
     source_lons: ArrayLike,
     target_lats: ArrayLike,
@@ -57,9 +58,10 @@ def nearest_indices(
 
 
 def gaussian_weighted_mean(
+    *,
     source_lats: ArrayLike,
     source_lons: ArrayLike,
-    values: ArrayLike,
+    data: ArrayLike,
     target_lats: ArrayLike,
     target_lons: ArrayLike,
     distance_scale_km: float,
@@ -85,31 +87,31 @@ def gaussian_weighted_mean(
     Args:
         source_lats: Latitude of each observation in degrees, of any shape.
         source_lons: Longitude of each observation in degrees, of the same shape.
-        values: Observed values, whose trailing dimensions match the source
+        data: Observed values, whose trailing dimensions match the source
             shape, e.g. (n_variables, n_obs). NaN or infinite observations are
             ignored. Only NaN marks missing values, so fill a masked array with
-            values.filled(np.nan) first.
+            data.filled(np.nan) first.
         target_lats: Latitude of each target point in degrees, of any shape,
-            e.g. from Grid.lonlat().
+            e.g. from Grid.latlon().
         target_lons: Longitude of each target point in degrees, of the same shape.
         distance_scale_km: Standard deviation of the Gaussian weights in km.
 
     Returns:
-        An array with the leading dimensions of values followed by the target
+        An array with the leading dimensions of data followed by the target
         shape. Target points with no valid observations are NaN.
 
     Raises:
         ValueError: If latitudes and longitudes differ in shape, are empty, or
-            are not all finite, if values do not end with the source shape, or
+            are not all finite, if data does not end with the source shape, or
             if distance_scale_km is not positive.
     """
     source_lats, source_lons = check_points("Source", source_lats, source_lons)
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
-    values = np.asarray(values)
+    data = np.asarray(data)
     source_shape = source_lats.shape
-    if values.shape[values.ndim - len(source_shape) :] != source_shape:
+    if data.shape[data.ndim - len(source_shape) :] != source_shape:
         msg = (
-            f"Values shape {values.shape} does not end with the source points "
+            f"Data shape {data.shape} does not end with the source points "
             f"shape {source_shape}."
         )
         raise ValueError(msg)
@@ -117,18 +119,18 @@ def gaussian_weighted_mean(
         msg = f"distance_scale_km must be positive, but got {distance_scale_km}."
         raise ValueError(msg)
 
-    leading_shape = values.shape[: values.ndim - len(source_shape)]
-    flat_values = values.reshape(-1, source_lats.size).astype(np.float64, copy=False)
+    leading_shape = data.shape[: data.ndim - len(source_shape)]
+    flat_data = data.reshape(-1, source_lats.size).astype(np.float64, copy=False)
     # Drop NaN or infinite observations from both the weighted sum and the sum
     # of weights
-    is_valid = np.isfinite(flat_values)
+    is_valid = np.isfinite(flat_data)
     valid = is_valid.astype(np.float64)
-    filled = np.where(is_valid, flat_values, 0.0)
+    filled = np.where(is_valid, flat_data, 0.0)
 
     source_xyz = unit_vectors(source_lats, source_lons)
     target_xyz = unit_vectors(target_lats, target_lons)
 
-    result = np.empty((flat_values.shape[0], len(target_xyz)))
+    result = np.empty((flat_data.shape[0], len(target_xyz)))
     chunk = max(1, _CHUNK_ELEMENTS // len(source_xyz))
     for start in range(0, len(target_xyz), chunk):
         block = slice(start, start + chunk)
@@ -144,7 +146,7 @@ def gaussian_weighted_mean(
             result[:, block] = (filled @ weights.T) / (valid @ weights.T)
 
     result[~np.isfinite(result)] = np.nan
-    result = result.astype(np.result_type(values.dtype, np.float32))
+    result = result.astype(np.result_type(data.dtype, np.float32))
     return result.reshape((*leading_shape, *target_lats.shape))
 
 

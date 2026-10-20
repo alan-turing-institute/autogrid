@@ -38,7 +38,7 @@ from autogrid.grids import build_ease2
 
 # A synthetic sea ice forecast on a subset of the 25 km EASE-Grid 2.0 North grid, as
 # a data file would store it, with 2D latitudes and longitudes and (time, ny, nx) data
-longitudes, latitudes = build_ease2("north", "25p0km", shape=(432, 432)).lonlat()
+latitudes, longitudes = build_ease2("north", "25p0km", shape=(432, 432)).latlon()
 ice_conc = np.clip(np.cos(np.deg2rad(4 * (90 - latitudes))), 0, 1)
 forecast = np.stack([ice_conc, 0.9 * ice_conc, 0.8 * ice_conc])
 
@@ -88,14 +88,16 @@ from autogrid import grid_to_points
 from autogrid.grids import build_ease2
 
 grid = build_ease2("north", "25p0km", shape=(432, 432))
-longitudes, latitudes = grid.lonlat()
+latitudes, longitudes = grid.latlon()
 forecast = np.stack([np.cos(np.deg2rad(4 * (90 - latitudes)))] * 3)  # (time, ny, nx)
 
 rng = np.random.default_rng(0)
 station_lats = rng.uniform(60, 90, 50)
 station_lons = rng.uniform(-180, 180, 50)
 # Shape (3, 50)
-at_stations = grid_to_points(grid, forecast, station_lats, station_lons)
+at_stations = grid_to_points(
+    grid, forecast, target_lats=station_lats, target_lons=station_lons
+)
 ```
 
 Every site takes its nearest grid point, however far away it is, so sites outside the grid are
@@ -121,7 +123,11 @@ obs_temperature = rng.normal(0, 1, 500)
 
 target = build_ease2("north", "25p0km", shape=(432, 432))
 gridded = points_to_grid(
-    target, obs_lats, obs_lons, obs_temperature, distance_scale_km=200
+    target,
+    source_lats=obs_lats,
+    source_lons=obs_lons,
+    data=obs_temperature,
+    distance_scale_km=200,
 )
 ```
 
@@ -149,13 +155,18 @@ data = rng.random((5, 500))
 # The points of a coarser dataset
 target_lats = np.rad2deg(np.arcsin(rng.uniform(-1, 1, 250)))
 target_lons = rng.uniform(-180, 180, 250)
-(index,) = nearest_indices(source_lats, source_lons, target_lats, target_lons)
+(index,) = nearest_indices(
+    source_lats=source_lats,
+    source_lons=source_lons,
+    target_lats=target_lats,
+    target_lons=target_lons,
+)
 converted = data[..., index]  # shape (5, 250)
 ```
 
 Every target point takes its nearest source point, however far away it is, so no target points are
 masked. For a 2D source, `nearest_indices` returns an `(iy, ix)` pair to use as `data[..., iy, ix]`.
-The targets can also be the points of a `Grid`, from `grid.lonlat()`, to take the nearest source
+The targets can also be the points of a `Grid`, from `grid.latlon()`, to take the nearest source
 point at each grid point. `gaussian_weighted_mean` takes the same latitudes and longitudes for a
 smoother result.
 
@@ -172,7 +183,7 @@ from autogrid.grids import build_ease2
 from autogrid.plot import projection
 
 grid = build_ease2("south", "25p0km", shape=(432, 432))
-longitudes, latitudes = grid.lonlat()
+latitudes, longitudes = grid.latlon()
 field = np.cos(np.deg2rad(latitudes)) * np.sin(np.deg2rad(longitudes))
 grid_projection = projection(grid)
 

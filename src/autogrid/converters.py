@@ -14,6 +14,7 @@ from autogrid.points import gaussian_weighted_mean, nearest_indices
 def grid_to_points(
     grid: Grid,
     data: ArrayLike,
+    *,
     target_lats: ArrayLike,
     target_lons: ArrayLike,
 ) -> NDArray[np.generic]:
@@ -41,23 +42,24 @@ def grid_to_points(
     if data.shape[-2:] != grid.shape:
         msg = f"Data shape {data.shape} does not end with the grid shape {grid.shape}."
         raise ValueError(msg)
-    longitudes, latitudes = grid.lonlat()
+    latitudes, longitudes = grid.latlon()
     # Exclude grid points beyond the valid area of a projection
     has_latlon = np.flatnonzero(np.isfinite(latitudes) & np.isfinite(longitudes))
     (nearest,) = nearest_indices(
-        latitudes.ravel()[has_latlon],
-        longitudes.ravel()[has_latlon],
-        target_lats,
-        target_lons,
+        source_lats=latitudes.ravel()[has_latlon],
+        source_lons=longitudes.ravel()[has_latlon],
+        target_lats=target_lats,
+        target_lons=target_lons,
     )
     return data.reshape(*data.shape[:-2], grid.size)[..., has_latlon[nearest]]
 
 
 def points_to_grid(
     grid: Grid,
+    *,
     source_lats: ArrayLike,
     source_lons: ArrayLike,
-    values: ArrayLike,
+    data: ArrayLike,
     distance_scale_km: float,
 ) -> NDArray[np.floating]:
     """Interpolate scattered observations onto a grid with Gaussian weights.
@@ -70,30 +72,30 @@ def points_to_grid(
         grid: Grid to interpolate onto.
         source_lats: Latitude of each observation in degrees, of any shape.
         source_lons: Longitude of each observation in degrees, of the same shape.
-        values: Observed values, whose trailing dimensions match the source shape,
+        data: Observed values, whose trailing dimensions match the source shape,
             e.g. (n_variables, n_obs). NaN or infinite observations are ignored.
             Only NaN marks missing values, so fill a masked array with
-            values.filled(np.nan) first.
+            data.filled(np.nan) first.
         distance_scale_km: Standard deviation of the Gaussian weights in km.
 
     Returns:
-        An array with the leading dimensions of values followed by the grid shape.
+        An array with the leading dimensions of data followed by the grid shape.
         Grid points with no valid observations, or with no latitude or longitude,
         are NaN.
 
     Raises:
         ValueError: As for gaussian_weighted_mean.
     """
-    flat_longitudes, flat_latitudes = (coords.ravel() for coords in grid.lonlat())
+    flat_latitudes, flat_longitudes = (coords.ravel() for coords in grid.latlon())
     # Exclude grid points beyond the valid area of a projection
     has_latlon = np.isfinite(flat_latitudes) & np.isfinite(flat_longitudes)
     gridded = gaussian_weighted_mean(
-        source_lats,
-        source_lons,
-        values,
-        flat_latitudes[has_latlon],
-        flat_longitudes[has_latlon],
-        distance_scale_km,
+        source_lats=source_lats,
+        source_lons=source_lons,
+        data=data,
+        target_lats=flat_latitudes[has_latlon],
+        target_lons=flat_longitudes[has_latlon],
+        distance_scale_km=distance_scale_km,
     )
     result = np.full((*gridded.shape[:-1], grid.size), np.nan, dtype=gridded.dtype)
     result[..., has_latlon] = gridded

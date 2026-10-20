@@ -21,7 +21,7 @@ def test_ease2_south_25p0km() -> None:
     # Rows run top to bottom, cell centres half a cell in from the edge
     assert grid.x_points[0] == -8_987_500
     assert grid.y_points[0] == 8_987_500
-    _, lat = grid.lonlat()
+    lat, _ = grid.latlon()
     assert np.isclose(np.min(lat), -90, atol=0.2)
 
 
