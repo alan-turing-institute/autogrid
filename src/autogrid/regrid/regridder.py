@@ -11,7 +11,7 @@ from autogrid.regrid.methods import _METHODS, Method
 class Regridder:
     """Regrid arrays from one Grid to another, reusing the regridding weights.
 
-    Build one Regridder per (source, target) pair and apply it to each field, The
+    Build one Regridder per (source, target) pair and apply it to each field. The
     weights for each method are built the first time that method is used and cached for
     later calls.
     """
