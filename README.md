@@ -29,7 +29,8 @@ source = build_global_latlon(1.0)
 target = build_ease2("south", "25p0km", shape=(432, 432))
 
 # Any leading dimensions, e.g. (time, ny, nx), are regridded together
-field = np.cos(np.deg2rad(source.latitudes)) * np.sin(np.deg2rad(source.longitudes))
+longitudes, latitudes = source.lonlat()
+field = np.cos(np.deg2rad(latitudes)) * np.sin(np.deg2rad(longitudes))
 forecast = np.stack([field, 2 * field, 3 * field])
 
 regridder = Regridder(source, target, method="linear")
@@ -69,7 +70,7 @@ from autogrid.grids import build_ease2
 
 # A synthetic sea ice dataset
 ease2 = build_ease2("north", "25p0km", shape=(432, 432))
-latitudes, longitudes = ease2.latitudes, ease2.longitudes
+longitudes, latitudes = ease2.lonlat()
 ice_conc = np.clip(np.cos(np.deg2rad(4 * (90 - latitudes))), 0, 1)[np.newaxis]
 
 source = Grid.from_latlon(latitudes, longitudes, "EPSG:6931")
@@ -97,14 +98,12 @@ from autogrid.points import nearest_indices
 
 # A flat list of points, with (variable, point) data
 source_grid = build_global_latlon(1.0)
-source_lats = source_grid.latitudes.ravel()
-source_lons = source_grid.longitudes.ravel()
+source_lons, source_lats = (c.ravel() for c in source_grid.lonlat())
 data = np.random.default_rng(0).random((5, source_lats.size))
 
 target = build_ease2("north", "25p0km", shape=(432, 432))
-(index,) = nearest_indices(
-    source_lats, source_lons, target.latitudes, target.longitudes
-)
+target_lons, target_lats = target.lonlat()
+(index,) = nearest_indices(source_lats, source_lons, target_lats, target_lons)
 reprojected = data[..., index]  # shape (5, 432, 432)
 ```
 
@@ -129,12 +128,13 @@ obs_lons = rng.uniform(-180, 180, 500)
 obs_temperature = rng.normal(0, 1, 500)
 
 target = build_ease2("north", "25p0km", shape=(432, 432))
+target_lons, target_lats = target.lonlat()
 gridded = gaussian_mean(
     obs_lats,
     obs_lons,
     obs_temperature,
-    target.latitudes,
-    target.longitudes,
+    target_lats,
+    target_lons,
     distance_scale_km=200,
 )
 ```
@@ -157,11 +157,12 @@ from autogrid.grids import build_ease2
 from autogrid.plot import projection
 
 grid = build_ease2("south", "25p0km", shape=(432, 432))
+longitudes, latitudes = grid.lonlat()
+field = np.cos(np.deg2rad(latitudes)) * np.sin(np.deg2rad(longitudes))
 grid_projection = projection(grid)
-field = np.cos(np.deg2rad(grid.latitudes)) * np.sin(np.deg2rad(grid.longitudes))
 
 ax = plt.axes(projection=grid_projection)
-ax.pcolormesh(grid.x_points, grid.y_points, field, transform=crs, cmap="RdBu_r")
+ax.pcolormesh(grid.x_points, grid.y_points, field, transform=grid_projection, cmap="RdBu_r")
 ax.coastlines()
 plt.savefig("field.png")
 ```

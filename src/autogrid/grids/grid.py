@@ -93,7 +93,7 @@ class Grid:
 
         Note: to reduce Grid memory usage this is recomputed on each access.
         """
-        return self.lonlat_slice(slice(None))[1]
+        return self.lonlat()[1]
 
     @property
     def longitudes(self) -> NDArray[np.float64]:
@@ -101,7 +101,7 @@ class Grid:
 
         Note: to reduce Grid memory usage this is recomputed on each access.
         """
-        return self.lonlat_slice(slice(None))[0]
+        return self.lonlat()[0]
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -143,16 +143,16 @@ class Grid:
             return inside & np.isfinite(x)
         return inside & (x >= np.min(self.x_bounds)) & (x <= np.max(self.x_bounds))
 
-    def lonlat_slice(
-        self, rows: slice
+    def lonlat(
+        self, rows: slice = slice(None)
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """Longitude and latitude of the points in a block of rows.
+        """WGS 84 longitude and latitude of the grid points, or of a block of rows.
 
-        A large grid can be processed a block at a time, rather than all at once as by
-        latitudes and longitudes.
+        This transforms the points once for both coordinates, rather than once each as
+        by longitudes and latitudes. A large grid can be processed a block at a time.
 
         Args:
-            rows: Slice of the rows of the grid.
+            rows: Slice of the rows of the grid. Defaults to all rows.
 
         Returns:
             Tuple of (longitude, latitude) arrays in degrees, with the shape of

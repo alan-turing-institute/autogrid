@@ -106,7 +106,7 @@ def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
     rows, _, _, target_lons, target_lats = _find_target_points(source, target)
     if not len(rows):
         return sparse.csr_array((target.size, source.size))
-    source_lons, source_lats = source.lonlat_slice(slice(None))
+    source_lons, source_lats = source.lonlat()
     (cols,) = nearest_indices(
         source_lats.ravel(), source_lons.ravel(), target_lats, target_lons
     )
@@ -157,7 +157,7 @@ def _find_target_points(
         CRS, with x shifted by whole turns to match the source cells, and its longitude
         and latitude.
     """
-    lon, lat = target.lonlat_slice(slice(None))
+    lon, lat = target.lonlat()
     lon, lat = lon.ravel(), lat.ravel()
     x, y = trf_from_lonlat(source.crs).transform(lon, lat)
     x = normalise_longitude(x, source.x_bounds, source.crs)

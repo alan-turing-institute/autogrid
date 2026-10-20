@@ -13,11 +13,14 @@ Longitudes and latitudes are always on WGS 84 (EPSG:4326), so that every Grid
 shares them and pyproj applies any datum shift between two Grids' CRSs. A CRS on a
 bare ellipsoid or sphere with no datum, as used by many climate models, has no
 defined shift, so PROJ takes its longitudes and latitudes as WGS 84 ones unchanged.
+For datums other than WGS 84, pyproj uses the best transformation available, so
+results can vary by metres depending on which PROJ grids are installed.
 
 Cartopy projections of Grids' CRSs, e.g. for plotting map axes, are in
 autogrid.plot, which imports cartopy.
 """
 
+import functools
 from typing import Any
 
 from pyproj import CRS, Transformer
@@ -61,11 +64,13 @@ def supported_crs(crs: CRSLike) -> CRS:
     raise ValueError(msg)
 
 
+@functools.cache
 def trf_from_lonlat(crs: CRS) -> Transformer:
     """Return a transformer from WGS 84 longitude and latitude to a CRS's x and y."""
     return Transformer.from_crs(LONLAT, crs, always_xy=True)
 
 
+@functools.cache
 def trf_to_lonlat(crs: CRS) -> Transformer:
     """Return a transformer from a CRS's x and y to WGS 84 longitude and latitude."""
     return Transformer.from_crs(crs, LONLAT, always_xy=True)

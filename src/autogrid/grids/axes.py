@@ -7,7 +7,10 @@ FULL_TURN = 360.0
 
 
 def check_axis_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:
-    """Return the points as a new float64 array, checking they define an axis."""
+    """Return the points as a new read-only float64 array, checking they define an axis.
+
+    The array is read-only so that bounds cached from it cannot go stale.
+    """
     points = np.array(points, dtype=np.float64)
     if points.ndim != 1 or len(points) < 2:
         msg = (
@@ -22,6 +25,7 @@ def check_axis_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:
     if not ((steps > 0).all() or (steps < 0).all()):
         msg = f"{axis} points must be strictly increasing or strictly decreasing."
         raise ValueError(msg)
+    points.flags.writeable = False
     return points
 
 
