@@ -66,7 +66,7 @@ def linear(source: Grid, target: Grid) -> sparse.csr_array:
     Target points between the outermost source points and the edge of the source cells
     take the value of the edge cell.
     """
-    rows, x, y = _find_target_points(source, target)
+    rows, x, y, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
     y0, y1, fy = _bracket(source.y_points, y)
     nx = source.shape[1]
@@ -87,7 +87,7 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
 
     Ties go to the source point with the lower coordinate, as in iris.
     """
-    rows, x, y = _find_target_points(source, target)
+    rows, x, y, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
     y0, y1, fy = _bracket(source.y_points, y)
     # Each target point gets an entry for the nearest source point
@@ -102,14 +102,12 @@ def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
 
     Target points are outside as for linear, in the source CRS.
     """
-    rows, _, _ = _find_target_points(source, target)
+    rows, _, _, target_lons, target_lats = _find_target_points(source, target)
     if not len(rows):
         return sparse.csr_array((target.size, source.size))
+    source_lons, source_lats = source.lonlat_slice(slice(None))
     (cols,) = nearest_indices(
-        source.latitudes.ravel(),
-        source.longitudes.ravel(),
-        target.latitudes.ravel()[rows],
-        target.longitudes.ravel()[rows],
+        source_lats.ravel(), source_lons.ravel(), target_lats, target_lons
     )
     return sparse.csr_array(
         (np.ones(len(rows)), (rows, cols)), shape=(target.size, source.size)
@@ -144,18 +142,26 @@ def _bracket(
 
 def _find_target_points(
     source: Grid, target: Grid
-) -> tuple[NDArray[np.intp], NDArray[np.float64], NDArray[np.float64]]:
+) -> tuple[
+    NDArray[np.intp],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+]:
     """Find the target points inside the source cells, in the source CRS.
 
     Returns:
-        Tuple of the flat target index of each point inside, and its x and y in
-        the source CRS, with x shifted by whole turns to match the source cells.
+        Tuple of the flat target index of each point inside, its x and y in the source
+        CRS, with x shifted by whole turns to match the source cells, and its longitude
+        and latitude.
     """
     lon, lat = target.lonlat_slice(slice(None))
-    x, y = trf_from_lonlat(source.crs).transform(lon.ravel(), lat.ravel())
+    lon, lat = lon.ravel(), lat.ravel()
+    x, y = trf_from_lonlat(source.crs).transform(lon, lat)
     x = normalise_longitude(x, source.x_bounds, source.crs)
     rows = np.flatnonzero(source.contains(x, y))
-    return rows, x[rows], y[rows]
+    return rows, x[rows], y[rows], lon[rows], lat[rows]
 
 
 def _overlaps(
