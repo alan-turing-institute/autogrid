@@ -1,5 +1,4 @@
 from functools import cached_property
-from typing import TYPE_CHECKING
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -18,9 +17,6 @@ from autogrid.grids.axes import (
     normalise_longitude,
 )
 
-if TYPE_CHECKING:
-    import cartopy.crs as ccrs
-
 
 class Grid:
     """A rectilinear grid of points in a given coordinate reference system (CRS).
@@ -29,9 +25,8 @@ class Grid:
     longitude and y is latitude regardless of the order of axes in the CRS.
 
     Only some CRSs are supported: latitude-longitude and rotated pole CRSs in degrees,
-    and projected CRSs in metres, on the WGS 84 datum or a bare ellipsoid, with a
-    Greenwich prime meridian. Reproject coordinates in any other CRS into one of these
-    first.
+    and projected CRSs in metres, on any datum. Reproject coordinates in any other CRS
+    into one of these first. Longitudes and latitudes are always on WGS 84.
     """
 
     def __init__(
@@ -94,7 +89,7 @@ class Grid:
 
     @property
     def latitudes(self) -> NDArray[np.float64]:
-        """True latitude of each grid point in degrees, with shape (ny, nx).
+        """WGS 84 latitude of each grid point in degrees, with shape (ny, nx).
 
         Note: to reduce Grid memory usage this is recomputed on each access.
         """
@@ -102,21 +97,11 @@ class Grid:
 
     @property
     def longitudes(self) -> NDArray[np.float64]:
-        """True longitude of each grid point in degrees east, with shape (ny, nx).
+        """WGS 84 longitude of each grid point in degrees east, with shape (ny, nx).
 
         Note: to reduce Grid memory usage this is recomputed on each access.
         """
         return self.lonlat_slice(slice(None))[0]
-
-    @property
-    def projection(self) -> "ccrs.Projection":
-        """The cartopy projection of this grid, e.g. for plotting map axes.
-
-        This needs cartopy, which is installed with the "plot" extra.
-        """
-        from autogrid.crs.cartopy import projection
-
-        return projection(self.crs)
 
     @property
     def shape(self) -> tuple[int, int]:

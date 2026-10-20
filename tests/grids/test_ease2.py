@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from autogrid.crs.cartopy import projection
 from autogrid.grids import build_ease2
 from autogrid.grids.ease2 import Region
 
@@ -26,7 +27,7 @@ def test_ease2_south_25p0km() -> None:
 def test_ease2_global_extent() -> None:
     grid = build_ease2("global", "36p0km")
     # The global grid spans the whole width of the projection
-    x_min, x_max = grid.projection.x_limits
+    x_min, x_max = projection(grid).x_limits
     assert np.isclose(grid.x_bounds[0, 0], x_min)
     assert np.isclose(grid.x_bounds[-1, 1], x_max)
 

@@ -30,7 +30,7 @@ plot = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "cartopy" },
+    { name = "autogrid", extra = ["plot"] },
     { name = "pytest" },
     { name = "ruff" },
     { name = "scitools-iris", version = "3.14.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -49,7 +49,7 @@ provides-extras = ["plot"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "cartopy", specifier = ">=0.26.0" },
+    { name = "autogrid", extras = ["plot"] },
     { name = "pytest", specifier = ">=9.1.1" },
     { name = "ruff", specifier = ">=0.17.0" },
     { name = "scitools-iris", specifier = ">=3.13" },

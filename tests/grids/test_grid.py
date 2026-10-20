@@ -2,7 +2,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from pyproj import CRS
+from pyproj import CRS, Transformer
 
 from autogrid import Grid
 from autogrid.crs import CRSLike
@@ -167,6 +167,12 @@ ROTATED = CRS.from_cf(
         "EPSG:3857",
         "EPSG:32630",
         "+proj=laea +lat_0=90 +lon_0=0 +R=6371228",
+        "+proj=longlat +ellps=clrk80ign +pm=paris",
+        "EPSG:4277",  # OSGB 1936
+        "EPSG:4269",  # NAD83
+        "EPSG:4258",  # ETRS89
+        "EPSG:27700",  # British National Grid, on OSGB 1936
+        "+proj=longlat +ellps=airy +towgs84=446.448,-125.157,542.06",
     ],
 )
 def test_grid_accepts_supported_crs(crs: CRSLike) -> None:
@@ -177,12 +183,6 @@ def test_grid_accepts_supported_crs(crs: CRSLike) -> None:
     ("crs", "match"),
     [
         ("EPSG:4807", "must be in degrees"),  # grads, Paris prime meridian
-        ("+proj=longlat +ellps=clrk80ign +pm=paris", "prime meridian"),
-        ("EPSG:4277", "has datum"),  # OSGB 1936
-        ("EPSG:4269", "has datum"),  # NAD83
-        ("EPSG:4258", "has datum"),  # ETRS89
-        ("EPSG:27700", "has datum"),  # British National Grid, on OSGB 1936
-        ("+proj=longlat +ellps=airy +towgs84=446.448,-125.157,542.06", "has datum"),
         ("EPSG:2263", "must be in metres"),  # US survey feet
         ("+proj=utm +zone=30 +datum=WGS84 +units=km", "must be in metres"),
         ("EPSG:4979", "must be in degrees"),  # WGS 84 3D, with ellipsoidal height
@@ -213,6 +213,33 @@ def test_rotated_grid_latlon_is_unrotated() -> None:
     grid = Grid([0.0, 1.0], [0.0, 1.0], ROTATED)
     np.testing.assert_allclose(grid.latitudes[0, 0], 52.5)
     np.testing.assert_allclose(grid.longitudes[0, 0], -2.5)
+
+
+def test_sphere_grid_latlon_is_unshifted() -> None:
+    grid = Grid([-2.0, -1.0], [54.0, 55.0], SPHERE)
+    np.testing.assert_allclose(grid.longitudes[0, 0], -2.0)
+    np.testing.assert_allclose(grid.latitudes[0, 0], 54.0)
+
+
+def test_grid_latlon_is_shifted_to_wgs84() -> None:
+    # OSGB 1936 coordinates are about 100 m from WGS 84 ones in northern England
+    grid = Grid([-2.0, -1.0], [54.0, 55.0], "EPSG:4277")
+    np.testing.assert_allclose(grid.longitudes[0, 0], -2.0015, atol=1e-4)
+    np.testing.assert_allclose(grid.latitudes[0, 0], 54.0002, atol=1e-4)
+
+
+def test_grid_latlon_is_from_greenwich() -> None:
+    grid = Grid([0.0, 1.0], [48.0, 49.0], "+proj=longlat +ellps=clrk80ign +pm=paris")
+    np.testing.assert_allclose(grid.longitudes[0, 0], 2.337229, atol=1e-6)
+
+
+def test_from_latlon_applies_datum_shift() -> None:
+    # Points on the British National Grid, from their WGS 84 latitude and longitude
+    x, y = np.meshgrid([400000.0, 410000.0, 420000.0], [450000.0, 460000.0])
+    lon, lat = Transformer.from_crs(27700, 4326, always_xy=True).transform(x, y)
+    grid = Grid.from_latlon(lat, lon, "EPSG:27700")
+    np.testing.assert_allclose(grid.x_points, x[0], atol=1e-3)
+    np.testing.assert_allclose(grid.y_points, y[:, 0], atol=1e-3)
 
 
 def test_contains_uses_cell_bounds() -> None:
