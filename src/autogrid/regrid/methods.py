@@ -17,9 +17,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy import sparse
 
-from autogrid.crs import trf_from_lonlat
 from autogrid.grids import Grid
-from autogrid.grids.axes import FULL_TURN, normalise_longitude
+from autogrid.grids.axes import FULL_TURN
 from autogrid.points import nearest_indices
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
@@ -103,15 +102,23 @@ def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
 
     Target points are outside as for linear, in the source CRS.
     """
-    rows, _, _, target_lons, target_lats = _find_target_points(source, target)
+    rows, _, _, flat_target_lons, flat_target_lats = _find_target_points(source, target)
     if not len(rows):
         return sparse.csr_array((target.size, source.size))
-    source_lons, source_lats = source.lonlat()
-    (cols,) = nearest_indices(
-        source_lats.ravel(), source_lons.ravel(), target_lats, target_lons
+    flat_source_lons, flat_source_lats = (coords.ravel() for coords in source.lonlat())
+    # Exclude grid points beyond the valid area of a projection
+    flat_source_indices = np.flatnonzero(
+        np.isfinite(flat_source_lons) & np.isfinite(flat_source_lats)
+    )
+    (nearest,) = nearest_indices(
+        flat_source_lats[flat_source_indices],
+        flat_source_lons[flat_source_indices],
+        flat_target_lats,
+        flat_target_lons,
     )
     return sparse.csr_array(
-        (np.ones(len(rows)), (rows, cols)), shape=(target.size, source.size)
+        (np.ones(len(rows)), (rows, flat_source_indices[nearest])),
+        shape=(target.size, source.size),
     )
 
 
@@ -157,12 +164,10 @@ def _find_target_points(
         CRS, with x shifted by whole turns to match the source cells, and its longitude
         and latitude.
     """
-    lon, lat = target.lonlat()
-    lon, lat = lon.ravel(), lat.ravel()
-    x, y = trf_from_lonlat(source.crs).transform(lon, lat)
-    x = normalise_longitude(x, source.x_bounds, source.crs)
-    rows = np.flatnonzero(source.contains(x, y))
-    return rows, x[rows], y[rows], lon[rows], lat[rows]
+    flat_lons, flat_lats = (coords.ravel() for coords in target.lonlat())
+    x, y = source.to_xy(flat_lons, flat_lats)
+    inside = np.flatnonzero(source.contains(x, y))
+    return inside, x[inside], y[inside], flat_lons[inside], flat_lats[inside]
 
 
 def _overlaps(

@@ -75,7 +75,8 @@ def test_grid_points_are_copied() -> None:
     ids=["latlon", "ease2-north", "ease2-global", "rotated"],
 )
 def test_from_latlon_recovers_grid(grid: Grid) -> None:
-    recovered = Grid.from_latlon(grid.latitudes, grid.longitudes, grid.crs)
+    lon, lat = grid.lonlat()
+    recovered = Grid.from_latlon(lat, lon, grid.crs)
     assert type(recovered) is Grid
     assert recovered.shape == grid.shape
     np.testing.assert_allclose(recovered.x_points, grid.x_points, atol=1e-6)
@@ -98,9 +99,9 @@ def test_from_latlon_handles_rows_starting_on_different_branches() -> None:
 
 
 def test_from_latlon_rejects_wrong_crs() -> None:
-    grid = build_ease2("north", "25p0km", shape=(432, 432))
+    lon, lat = build_ease2("north", "25p0km", shape=(432, 432)).lonlat()
     with pytest.raises(ValueError, match="not on a rectilinear grid"):
-        Grid.from_latlon(grid.latitudes, grid.longitudes, "EPSG:4326")
+        Grid.from_latlon(lat, lon, "EPSG:4326")
 
 
 @pytest.mark.parametrize(
@@ -210,27 +211,28 @@ def test_grids_with_different_crs_are_not_equal() -> None:
 
 
 def test_rotated_grid_latlon_is_unrotated() -> None:
-    grid = Grid([0.0, 1.0], [0.0, 1.0], ROTATED)
-    np.testing.assert_allclose(grid.latitudes[0, 0], 52.5)
-    np.testing.assert_allclose(grid.longitudes[0, 0], -2.5)
+    lon, lat = Grid([0.0, 1.0], [0.0, 1.0], ROTATED).lonlat()
+    np.testing.assert_allclose(lat[0, 0], 52.5)
+    np.testing.assert_allclose(lon[0, 0], -2.5)
 
 
 def test_sphere_grid_latlon_is_unshifted() -> None:
-    grid = Grid([-2.0, -1.0], [54.0, 55.0], SPHERE)
-    np.testing.assert_allclose(grid.longitudes[0, 0], -2.0)
-    np.testing.assert_allclose(grid.latitudes[0, 0], 54.0)
+    lon, lat = Grid([-2.0, -1.0], [54.0, 55.0], SPHERE).lonlat()
+    np.testing.assert_allclose(lon[0, 0], -2.0)
+    np.testing.assert_allclose(lat[0, 0], 54.0)
 
 
 def test_grid_latlon_is_shifted_to_wgs84() -> None:
     # OSGB 1936 coordinates are about 100 m from WGS 84 ones in northern England
-    grid = Grid([-2.0, -1.0], [54.0, 55.0], "EPSG:4277")
-    np.testing.assert_allclose(grid.longitudes[0, 0], -2.0015, atol=1e-4)
-    np.testing.assert_allclose(grid.latitudes[0, 0], 54.0002, atol=1e-4)
+    lon, lat = Grid([-2.0, -1.0], [54.0, 55.0], "EPSG:4277").lonlat()
+    np.testing.assert_allclose(lon[0, 0], -2.0015, atol=1e-4)
+    np.testing.assert_allclose(lat[0, 0], 54.0002, atol=1e-4)
 
 
 def test_grid_latlon_is_from_greenwich() -> None:
     grid = Grid([0.0, 1.0], [48.0, 49.0], "+proj=longlat +ellps=clrk80ign +pm=paris")
-    np.testing.assert_allclose(grid.longitudes[0, 0], 2.337229, atol=1e-6)
+    lon, _ = grid.lonlat()
+    np.testing.assert_allclose(lon[0, 0], 2.337229, atol=1e-6)
 
 
 def test_from_latlon_applies_datum_shift() -> None:
@@ -271,3 +273,16 @@ def test_contains_keeps_projected_shape() -> None:
     assert inside.shape == grid.shape
     assert inside.all()
     assert not grid.contains([1e8], [0.0]).any()
+
+
+def test_to_xy_recovers_grid_points(south: Grid) -> None:
+    x, y = south.to_xy(*south.lonlat())
+    np.testing.assert_allclose(x, np.broadcast_to(south.x_points, south.shape))
+    np.testing.assert_allclose(y, np.broadcast_to(south.y_points[:, None], south.shape))
+
+
+def test_to_xy_normalises_longitude() -> None:
+    grid = Grid(np.arange(170.5, 200, 1.0), [0.0, 1.0], "EPSG:4326")
+    x, y = grid.to_xy([-170.0, 10.0], [0.0, 1.0])
+    np.testing.assert_allclose(x, [190.0, 10.0])
+    np.testing.assert_allclose(y, [0.0, 1.0])

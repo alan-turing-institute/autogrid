@@ -88,22 +88,6 @@ class Grid:
         return self.crs.is_geographic
 
     @property
-    def latitudes(self) -> NDArray[np.float64]:
-        """WGS 84 latitude of each grid point in degrees, with shape (ny, nx).
-
-        Note: to reduce Grid memory usage this is recomputed on each access.
-        """
-        return self.lonlat()[1]
-
-    @property
-    def longitudes(self) -> NDArray[np.float64]:
-        """WGS 84 longitude of each grid point in degrees east, with shape (ny, nx).
-
-        Note: to reduce Grid memory usage this is recomputed on each access.
-        """
-        return self.lonlat()[0]
-
-    @property
     def shape(self) -> tuple[int, int]:
         """The (ny, nx) shape of the grid."""
         return (len(self.y_points), len(self.x_points))
@@ -143,23 +127,36 @@ class Grid:
             return inside & np.isfinite(x)
         return inside & (x >= np.min(self.x_bounds)) & (x <= np.max(self.x_bounds))
 
-    def lonlat(
-        self, rows: slice = slice(None)
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        """WGS 84 longitude and latitude of the grid points, or of a block of rows.
+    def lonlat(self) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """WGS 84 longitude and latitude of the grid points.
 
-        This transforms the points once for both coordinates, rather than once each as
-        by longitudes and latitudes. A large grid can be processed a block at a time.
-
-        Args:
-            rows: Slice of the rows of the grid. Defaults to all rows.
+        To reduce Grid memory usage, these are recomputed on each call.
 
         Returns:
-            Tuple of (longitude, latitude) arrays in degrees, with the shape of
-            the block of rows.
+            Tuple of (longitude, latitude) arrays in degrees, with shape (ny, nx).
+            Points beyond the valid area of a projection are not finite.
         """
-        x, y = np.meshgrid(self.x_points, self.y_points[rows])
+        x, y = np.meshgrid(self.x_points, self.y_points)
         return trf_to_lonlat(self.crs).transform(x, y)
+
+    def to_xy(
+        self, longitudes: ArrayLike, latitudes: ArrayLike
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        """Convert the given longitudes and latitudes into CRS coordinates of the grid.
+
+        For a geographic CRS, x is shifted by whole turns to within half a turn of the
+        middle of the grid's cells.
+
+        Args:
+            longitudes: Longitude of each point in degrees east, of any shape.
+            latitudes: Latitude of each point in degrees, of the same shape.
+
+        Returns:
+            Tuple of (x, y) arrays in the grid's CRS, with the shape of the points.
+            Points beyond the valid area of a projection are not finite.
+        """
+        x, y = trf_from_lonlat(self.crs).transform(longitudes, latitudes)
+        return normalise_longitude(x, self.x_bounds, self.crs), np.asarray(y)
 
     @classmethod
     def from_latlon(

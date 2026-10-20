@@ -35,39 +35,32 @@ def test_curvilinear_points_are_not_a_grid() -> None:
 
 def test_nearest_flat_source_matches_grid_source(latlon: Grid, south: Grid) -> None:
     # An anemoi dataset stores the source as flat latitude and longitude arrays
-    (flat,) = nearest_indices(
-        latlon.latitudes.ravel(),
-        latlon.longitudes.ravel(),
-        south.latitudes,
-        south.longitudes,
-    )
+    src_lon, src_lat = latlon.lonlat()
+    tgt_lon, tgt_lat = south.lonlat()
+    (flat,) = nearest_indices(src_lat.ravel(), src_lon.ravel(), tgt_lat, tgt_lon)
     assert flat.shape == south.shape
     assert flat.dtype == np.intp
-    iy, ix = nearest_indices(
-        latlon.latitudes, latlon.longitudes, south.latitudes, south.longitudes
-    )
+    iy, ix = nearest_indices(src_lat, src_lon, tgt_lat, tgt_lon)
     np.testing.assert_array_equal(flat, np.ravel_multi_index((iy, ix), latlon.shape))
 
 
 def test_nearest_flat_target_keeps_its_shape(latlon: Grid, south: Grid) -> None:
-    iy, ix = nearest_indices(
-        latlon.latitudes,
-        latlon.longitudes,
-        south.latitudes.ravel(),
-        south.longitudes.ravel(),
-    )
-    assert iy.shape == ix.shape == (south.latitudes.size,)
+    src_lon, src_lat = latlon.lonlat()
+    tgt_lon, tgt_lat = south.lonlat()
+    iy, ix = nearest_indices(src_lat, src_lon, tgt_lat.ravel(), tgt_lon.ravel())
+    assert iy.shape == ix.shape == (south.size,)
 
 
 @pytest.mark.parametrize("source", ["latlon", "curvilinear"])
 def test_nearest_matches_brute_force(source: str) -> None:
     if source == "latlon":
         grid = build_global_latlon(5.0)
-        src_lat, src_lon = grid.latitudes, grid.longitudes
+        src_lon, src_lat = grid.lonlat()
     else:
         src_lat, src_lon = _curvilinear_points()
     target = build_ease2("south", "36p0km", shape=(60, 60))
-    tgt_lat, tgt_lon = target.latitudes.ravel(), target.longitudes.ravel()
+    tgt_lon, tgt_lat = target.lonlat()
+    tgt_lat, tgt_lon = tgt_lat.ravel(), tgt_lon.ravel()
     indices = nearest_indices(src_lat, src_lon, tgt_lat, tgt_lon)
     # Distance from every target point to every source point, as in cryocast
     distances = _haversine_km(
@@ -148,8 +141,9 @@ def test_gaussian_weighted_mean_matches_argo_source(
     min_weight: float,
 ) -> None:
     lat, lon, values = observations
+    tgt_lon, tgt_lat = target.lonlat()
     result = gaussian_weighted_mean(
-        lat, lon, values, target.latitudes, target.longitudes, distance_scale_km
+        lat, lon, values, tgt_lat, tgt_lon, distance_scale_km
     )
     assert result.shape == (3, *target.shape)
     for got, variable in zip(result, values, strict=True):
@@ -157,8 +151,8 @@ def test_gaussian_weighted_mean_matches_argo_source(
             lat,
             lon,
             variable,
-            target.latitudes,
-            target.longitudes,
+            tgt_lat,
+            tgt_lon,
             distance_scale_km,
             min_weight,
         )
@@ -171,7 +165,8 @@ def test_gaussian_weighted_mean_chunking_does_not_change_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     lat, lon, values = observations
-    args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
+    tgt_lon, tgt_lat = target.lonlat()
+    args = (lat, lon, values, tgt_lat, tgt_lon, 500.0)
     whole = gaussian_weighted_mean(*args)
     # Chunks of 7 target points, so the last chunk is partial
     monkeypatch.setattr(autogrid.points.points, "_CHUNK_ELEMENTS", 7 * lat.size)
@@ -239,9 +234,8 @@ def test_gaussian_weighted_mean_keeps_float32_values() -> None:
 def test_gaussian_weighted_mean_keeps_source_and_target_shapes(target: Grid) -> None:
     lat, lon = np.meshgrid(np.linspace(-80, -60, 4), np.linspace(-180, 180, 5))
     values = np.ones((2, *lat.shape), dtype=np.float32)
-    result = gaussian_weighted_mean(
-        lat, lon, values, target.latitudes, target.longitudes, 1e3
-    )
+    tgt_lon, tgt_lat = target.lonlat()
+    result = gaussian_weighted_mean(lat, lon, values, tgt_lat, tgt_lon, 1e3)
     assert result.shape == (2, *target.shape)
     assert result.dtype == np.float32
     np.testing.assert_allclose(result, 1.0, rtol=1e-6)

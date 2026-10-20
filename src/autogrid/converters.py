@@ -42,15 +42,15 @@ def grid_to_points(
         msg = f"Data shape {data.shape} does not end with the grid shape {grid.shape}."
         raise ValueError(msg)
     longitudes, latitudes = grid.lonlat()
-    # Grid points beyond the valid area of a projection have no latitude or longitude
+    # Exclude grid points beyond the valid area of a projection
     has_latlon = np.flatnonzero(np.isfinite(latitudes) & np.isfinite(longitudes))
-    (index,) = nearest_indices(
+    (nearest,) = nearest_indices(
         latitudes.ravel()[has_latlon],
         longitudes.ravel()[has_latlon],
         target_lats,
         target_lons,
     )
-    return data.reshape(*data.shape[:-2], grid.size)[..., has_latlon[index]]
+    return data.reshape(*data.shape[:-2], grid.size)[..., has_latlon[nearest]]
 
 
 def points_to_grid(
@@ -84,17 +84,17 @@ def points_to_grid(
     Raises:
         ValueError: As for gaussian_weighted_mean.
     """
-    longitudes, latitudes = grid.lonlat()
-    # Grid points beyond the valid area of a projection have no latitude or longitude
-    has_latlon = np.isfinite(latitudes) & np.isfinite(longitudes)
+    flat_longitudes, flat_latitudes = (coords.ravel() for coords in grid.lonlat())
+    # Exclude grid points beyond the valid area of a projection
+    has_latlon = np.isfinite(flat_latitudes) & np.isfinite(flat_longitudes)
     gridded = gaussian_weighted_mean(
         source_lats,
         source_lons,
         values,
-        latitudes[has_latlon],
-        longitudes[has_latlon],
+        flat_latitudes[has_latlon],
+        flat_longitudes[has_latlon],
         distance_scale_km,
     )
-    result = np.full((*gridded.shape[:-1], *grid.shape), np.nan, dtype=gridded.dtype)
+    result = np.full((*gridded.shape[:-1], grid.size), np.nan, dtype=gridded.dtype)
     result[..., has_latlon] = gridded
-    return result
+    return result.reshape(*gridded.shape[:-1], *grid.shape)

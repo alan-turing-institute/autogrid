@@ -6,14 +6,15 @@ from pyproj import CRS, Transformer
 from scipy import sparse
 
 import autogrid.regrid.methods
-from autogrid import Grid, Regridder
+from autogrid import Grid, Regridder, grid_to_points
 from autogrid.grids import build_ease2, build_global_latlon
 from autogrid.points import nearest_indices
 from autogrid.regrid.methods import METHODS, Method
 
 
 def analytic(grid: Grid) -> np.ndarray:
-    return np.cos(np.deg2rad(grid.latitudes)) * np.sin(np.deg2rad(grid.longitudes))
+    lon, lat = grid.lonlat()
+    return np.cos(np.deg2rad(lat)) * np.sin(np.deg2rad(lon))
 
 
 def outside(regridder: Regridder) -> np.ndarray:
@@ -34,7 +35,7 @@ def test_regrid_matches_analytic_field(
     assert result.shape == south.shape
     # Within half a cell of the pole, beyond the outermost source latitudes, the
     # source edge values are held rather than extrapolated
-    polar = np.abs(south.latitudes) > latlon.y_points.max()
+    polar = np.abs(south.lonlat()[1]) > latlon.y_points.max()
     np.testing.assert_allclose(result[~polar], analytic(south)[~polar], atol=atol)
     np.testing.assert_allclose(result[polar], analytic(south)[polar], atol=1e-2)
 
@@ -67,8 +68,8 @@ def test_area_weighted_conserves_mean(latlon: Grid) -> None:
     regridder = Regridder(latlon, build_global_latlon(2.0), "area_weighted")
     result = regridder.apply(data)
     assert result.shape == (90, 180)
-    weights = np.cos(np.deg2rad(latlon.latitudes))
-    coarse_weights = np.cos(np.deg2rad(build_global_latlon(2.0).latitudes))
+    weights = np.cos(np.deg2rad(latlon.lonlat()[1]))
+    coarse_weights = np.cos(np.deg2rad(build_global_latlon(2.0).lonlat()[1]))
     np.testing.assert_allclose(
         np.average(result, weights=coarse_weights),
         np.average(data, weights=weights),
@@ -118,8 +119,9 @@ def test_nan_input_propagates(latlon: Grid, south: Grid) -> None:
     data = np.ones(latlon.shape)
     data[:30] = np.nan  # southernmost 30 degrees
     result = Regridder(latlon, south).apply(data)
-    assert np.isnan(result[south.latitudes < -61]).all()
-    assert not np.isnan(result[south.latitudes > -59]).any()
+    _, lat = south.lonlat()
+    assert np.isnan(result[lat < -61]).all()
+    assert not np.isnan(result[lat > -59]).any()
 
 
 def test_rejects_wrong_shape(latlon: Grid, south: Grid) -> None:
@@ -190,9 +192,9 @@ def test_nearest_great_circle_matches_nearest_indices(
 ) -> None:
     # The indices from nearest_indices can gather data externally, e.g. torch tensors
     regridder = Regridder(source, target, "nearest_great_circle")
-    iy, ix = nearest_indices(
-        source.latitudes, source.longitudes, target.latitudes, target.longitudes
-    )
+    src_lon, src_lat = source.lonlat()
+    tgt_lon, tgt_lat = target.lonlat()
+    iy, ix = nearest_indices(src_lat, src_lon, tgt_lat, tgt_lon)
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
     expected = regridder.apply(data)
@@ -224,10 +226,25 @@ def test_nearest_great_circle_flags_targets_without_latlon_as_outside() -> None:
     # that its corner cells have no latitude or longitude
     points = np.arange(-15_000_000, 15_000_001, 300_000.0)
     target = Grid(points, points[::-1], "EPSG:6931")
-    no_latlon = np.isnan(target.latitudes)
+    no_latlon = np.isnan(target.lonlat()[1])
     assert no_latlon.any()
     regridder = Regridder(build_global_latlon(5.0), target, "nearest_great_circle")
     np.testing.assert_array_equal(outside(regridder), no_latlon)
+
+
+def test_nearest_great_circle_skips_sources_without_latlon() -> None:
+    # A north polar source grid reaching beyond the valid area of its projection, so
+    # that its corner cells have no latitude or longitude
+    points = np.arange(-15_000_000, 15_000_001, 300_000.0)
+    source = Grid(points, points[::-1], "EPSG:6931")
+    target = build_global_latlon(5.0)
+    regridder = Regridder(source, target, "nearest_great_circle")
+    data = np.random.default_rng(0).random(source.shape)
+    lon, lat = target.lonlat()
+    expected = grid_to_points(source, data, lat, lon)
+    inside = ~outside(regridder)
+    assert inside.any()
+    np.testing.assert_array_equal(regridder.apply(data)[inside], expected[inside])
 
 
 def test_nearest_great_circle_with_no_targets_inside() -> None:
@@ -244,7 +261,7 @@ def test_nearest_great_circle_differs_from_nearest_near_pole(
         latlon, south, "nearest_great_circle"
     ).apply(flat)
     assert differ.any()
-    assert south.latitudes[differ].min() < -89
+    assert south.lonlat()[1][differ].min() < -89
 
 
 def test_nearest_great_circle_handles_leading_dimensions_and_nan(
@@ -256,8 +273,9 @@ def test_nearest_great_circle_handles_leading_dimensions_and_nan(
     result = regridder.apply(data)
     assert result.shape == (4, 2, *south.shape)
     np.testing.assert_array_equal(result[3, 1], regridder.apply(data[3, 1]))
-    assert np.isnan(result[..., south.latitudes < -61]).all()
-    assert not np.isnan(result[..., south.latitudes > -59]).any()
+    _, lat = south.lonlat()
+    assert np.isnan(result[..., lat < -61]).all()
+    assert not np.isnan(result[..., lat > -59]).any()
 
 
 def test_nearest_great_circle_outside_source_is_nan(south: Grid) -> None:

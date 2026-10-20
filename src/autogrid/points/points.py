@@ -90,7 +90,7 @@ def gaussian_weighted_mean(
             ignored. Only NaN marks missing values, so fill a masked array with
             values.filled(np.nan) first.
         target_lats: Latitude of each target point in degrees, of any shape,
-            e.g. Grid.latitudes.
+            e.g. from Grid.lonlat().
         target_lons: Longitude of each target point in degrees, of the same shape.
         distance_scale_km: Standard deviation of the Gaussian weights in km.
 
