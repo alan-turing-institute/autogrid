@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 from pyproj import CRS, Transformer
 
-import autogrid.regrid.grid_search
+import autogrid.regrid.methods
 from autogrid import Grid, Regridder
-from autogrid.grids import build_global_latlon
-from autogrid.regrid.grid_search import grid_to_grid
+from autogrid.grids import build_ease2, build_global_latlon
+from autogrid.points import nearest_indices
 from autogrid.regrid.methods import _METHODS, Method
 
 
@@ -145,23 +145,34 @@ def test_methods_differ_on_same_regridder(latlon: Grid, south: Grid) -> None:
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "target"),
     [
-        build_global_latlon(1.0),
-        Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326"),
+        (build_global_latlon(1.0), build_ease2("south", "25p0km", shape=(432, 432))),
+        (
+            Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326"),
+            build_ease2("south", "25p0km", shape=(432, 432)),
+        ),
+        (build_ease2("north", "36p0km"), build_global_latlon(1.0)),
+        (
+            Grid(np.arange(170.5, 200, 1.0), np.arange(60.5, 40, -1.0), "EPSG:4326"),
+            build_global_latlon(2.0),
+        ),
     ],
-    ids=["global", "regional"],
+    ids=["latlon", "regional", "polar", "dateline"],
 )
-def test_nearest_great_circle_matches_grid_to_grid_indices(
-    source: Grid, south: Grid
+def test_nearest_great_circle_matches_nearest_indices(
+    source: Grid, target: Grid
 ) -> None:
-    # The indices from grid_to_grid can gather data externally, e.g. torch tensors
-    regridder = Regridder(source, south)
-    iy, ix = grid_to_grid(source, south)
+    # The indices from nearest_indices can gather data externally, e.g. torch tensors
+    regridder = Regridder(source, target)
+    iy, ix = nearest_indices(
+        source.latitudes, source.longitudes, target.latitudes, target.longitudes
+    )
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
     expected = regridder.apply(data, "nearest_great_circle")
     inside = ~regridder.outside("nearest_great_circle")
+    assert inside.any()
     np.testing.assert_array_equal(gathered[..., inside], expected[..., inside])
     assert np.isnan(expected[..., ~inside]).all()
 
@@ -170,10 +181,10 @@ def test_nearest_great_circle_indices_are_cached(
     latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = []
-    real = autogrid.regrid.grid_search.search_grid
+    real = autogrid.regrid.methods.nearest_indices
     monkeypatch.setattr(
-        autogrid.regrid.grid_search,
-        "search_grid",
+        autogrid.regrid.methods,
+        "nearest_indices",
         lambda *args: calls.append(args) or real(*args),
     )
     regridder = Regridder(latlon, south)
@@ -181,6 +192,38 @@ def test_nearest_great_circle_indices_are_cached(
     first = regridder.apply(data, "nearest_great_circle")
     np.testing.assert_array_equal(regridder.apply(data, "nearest_great_circle"), first)
     assert len(calls) == 1
+
+
+def test_nearest_great_circle_avoids_source_cells_without_latlon() -> None:
+    # A north polar grid reaching beyond the valid area of its projection, so that
+    # its corner cells have no latitude or longitude
+    points = np.arange(-15_000_000, 15_000_001, 300_000.0)
+    source = Grid(points, points[::-1], "EPSG:6931")
+    no_latlon = np.isnan(source.latitudes)
+    assert no_latlon.any()
+    regridder = Regridder(source, build_global_latlon(5.0))
+    used = regridder.weights("nearest_great_circle").indices
+    assert used.size
+    assert not no_latlon.ravel()[used].any()
+
+
+def test_nearest_great_circle_flags_targets_without_latlon_as_outside() -> None:
+    # A north polar target grid reaching beyond the valid area of its projection, so
+    # that its corner cells have no latitude or longitude
+    points = np.arange(-15_000_000, 15_000_001, 300_000.0)
+    target = Grid(points, points[::-1], "EPSG:6931")
+    no_latlon = np.isnan(target.latitudes)
+    assert no_latlon.any()
+    outside = Regridder(build_global_latlon(5.0), target).outside(
+        "nearest_great_circle"
+    )
+    np.testing.assert_array_equal(outside, no_latlon)
+
+
+def test_nearest_great_circle_with_no_targets_inside() -> None:
+    source = Grid([0, 1, 2], [0, 1], 4326)
+    target = Grid([100, 101], [50, 51], 4326)
+    assert Regridder(source, target).outside("nearest_great_circle").all()
 
 
 def test_nearest_great_circle_differs_from_nearest_near_pole(
@@ -235,7 +278,7 @@ def test_outside_matches_direct_transform() -> None:
     np.testing.assert_array_equal(regridder.outside("linear"), want)
     assert want.any()
     assert not want.all()
-    # With no datum shift, the great circle search flags the same points
+    # nearest_great_circle flags the same points
     np.testing.assert_array_equal(regridder.outside("nearest_great_circle"), want)
     nan = np.isnan(regridder.apply(np.ones(source.shape), "nearest_great_circle"))
     np.testing.assert_array_equal(nan, want)

@@ -25,8 +25,7 @@ def nearest_indices(
 
     This suits flat point lists, such as an anemoi dataset's latitudes and
     longitudes, and curvilinear grids. It gives the same nearest points as the
-    "nearest_great_circle" method of Regridder. For a very large source Grid,
-    autogrid.regrid.grid_to_points finds them without a KD-tree over every point.
+    "nearest_great_circle" method of Regridder, which uses it.
 
     Every target point takes its nearest source point, however far away, so
     nothing is masked outside the source domain.

@@ -76,9 +76,9 @@ class Regridder:
 
         These are the target points that the method leaves NaN for a source
         field with no NaN values, as no source point contributes to them.
-        "linear" and "nearest" find them in the source CRS, "nearest_great_circle"
-        from where its search starts, and "area_weighted" as the target cells
-        that the source cells do not wholly cover.
+        "linear", "nearest" and "nearest_great_circle" find them in the source
+        CRS, and "area_weighted" as the target cells that the source cells do
+        not wholly cover.
 
         Returns:
             A boolean array with the target grid shape (ny, nx).

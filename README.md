@@ -7,8 +7,6 @@ between scattered points, using great circle distances where it matters.
 - `Regridder`: regrid arrays from one `Grid` to another, caching the weights.
 - `autogrid.points`: nearest neighbours and Gaussian weighted means of plain latitude/longitude
 points, with no CRS needed.
-- `autogrid.regrid`: `grid_to_points` and `grid_to_grid`, for nearest neighbours on a `Grid` by
-great circle distance.
 
 ## Example workflows
 
@@ -140,26 +138,6 @@ gridded = gaussian_mean(
 
 Every observation contributes to every target point, so target points far from all observations
 tend to the unweighted mean of the observations rather than to NaN.
-
-### Find nearest points on a very large grid
-
-A KD-tree over every point of a 1 km EASE-Grid 2.0 grid (324 million points) needs a lot of memory.
-`grid_to_points` uses the grid's structure instead: it starts from the nearest point in the grid's
-CRS and steps between neighbouring grid points by great circle distance. This needs memory only in
-proportion to the number of target points.
-
-```python
-from autogrid.grids import build_ease2
-from autogrid.regrid import grid_to_points
-
-source = build_ease2("north", "1p0km")  # 18000 x 18000
-station_lats = [78.2, 71.3, 64.8]
-station_lons = [15.6, -156.8, -147.7]
-
-iy, ix = grid_to_points(source, station_lats, station_lons)
-```
-
-The `"nearest_great_circle"` argument to `Regridder` uses this search.
 
 ### Plot a field on its own projection
 
