@@ -3,21 +3,22 @@ from typing import get_args
 import numpy as np
 import pytest
 from pyproj import CRS, Transformer
+from scipy import sparse
 
 import autogrid.regrid.methods
 from autogrid import Grid, Regridder
 from autogrid.grids import build_ease2, build_global_latlon
 from autogrid.points import nearest_indices
-from autogrid.regrid.methods import _METHODS, Method
+from autogrid.regrid.methods import METHODS, Method
 
 
 def analytic(grid: Grid) -> np.ndarray:
     return np.cos(np.deg2rad(grid.latitudes)) * np.sin(np.deg2rad(grid.longitudes))
 
 
-def outside(regridder: Regridder, method: Method) -> np.ndarray:
+def outside(regridder: Regridder) -> np.ndarray:
     """Flag the target points left NaN for a source field with no NaN values."""
-    return np.isnan(regridder.apply(np.ones(regridder.source.shape), method))
+    return np.isnan(regridder.apply(np.ones(regridder.source.shape)))
 
 
 @pytest.mark.parametrize(
@@ -27,7 +28,7 @@ def outside(regridder: Regridder, method: Method) -> np.ndarray:
 def test_regrid_matches_analytic_field(
     latlon: Grid, south: Grid, method: Method, atol: float
 ) -> None:
-    result = Regridder(latlon, south).apply(analytic(latlon).astype(np.float32), method)
+    result = Regridder(latlon, south, method).apply(analytic(latlon).astype(np.float32))
     assert isinstance(result, np.ndarray)
     assert not isinstance(result, np.ma.MaskedArray)
     assert result.shape == south.shape
@@ -52,9 +53,9 @@ def test_rotated_pole_regrids(method: Method) -> None:
         ),
     )
     target = Grid(np.arange(-5, 5, 1.0), np.arange(45, 55, 1.0), "EPSG:4326")
-    result = Regridder(rotated, target).apply(analytic(rotated), method)
-    expected = Regridder(rotated, target).apply(
-        analytic(rotated), "nearest_great_circle"
+    result = Regridder(rotated, target, method).apply(analytic(rotated))
+    expected = Regridder(rotated, target, "nearest_great_circle").apply(
+        analytic(rotated)
     )
     np.testing.assert_allclose(result, analytic(target), atol=5e-3)
     if method == "nearest":
@@ -63,7 +64,8 @@ def test_rotated_pole_regrids(method: Method) -> None:
 
 def test_area_weighted_conserves_mean(latlon: Grid) -> None:
     data = np.random.default_rng(0).random(latlon.shape)
-    result = Regridder(latlon, build_global_latlon(2.0)).apply(data, "area_weighted")
+    regridder = Regridder(latlon, build_global_latlon(2.0), "area_weighted")
+    result = regridder.apply(data)
     assert result.shape == (90, 180)
     weights = np.cos(np.deg2rad(latlon.latitudes))
     coarse_weights = np.cos(np.deg2rad(build_global_latlon(2.0).latitudes))
@@ -96,20 +98,20 @@ def test_half_cell_beyond_outermost_points_keeps_edge_values(method: Method) -> 
     # Points just outside the source cells, and inside the edge cells beyond
     # the outermost source points
     target = Grid([9.4, 9.6, 19.4, 19.6], [52.0, 53.0], "EPSG:4326")
-    result = Regridder(source, target).apply(data, method)
+    result = Regridder(source, target, method).apply(data)
     np.testing.assert_array_equal(result[:, 1:3], [[100.0, 190.0]] * 2)
     assert np.isnan(result[:, [0, 3]]).all()
 
 
 def test_integer_input_is_regridded_to_float(south: Grid) -> None:
     regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
-    regridder = Regridder(regional, south)
     data = np.ones(regional.shape, dtype=np.int32)
     methods: list[Method] = ["linear", "nearest", "nearest_great_circle"]
     for method in methods:
-        result = regridder.apply(data, method)
+        regridder = Regridder(regional, south, method)
+        result = regridder.apply(data)
         assert np.issubdtype(result.dtype, np.floating)
-        np.testing.assert_array_equal(np.isnan(result), outside(regridder, method))
+        np.testing.assert_array_equal(np.isnan(result), outside(regridder))
 
 
 def test_nan_input_propagates(latlon: Grid, south: Grid) -> None:
@@ -127,26 +129,44 @@ def test_rejects_wrong_shape(latlon: Grid, south: Grid) -> None:
 
 def test_rejects_unknown_method(latlon: Grid, south: Grid) -> None:
     with pytest.raises(ValueError, match="Unknown regridding method"):
-        Regridder(latlon, south).apply(np.ones(latlon.shape), "cubic")  # ty: ignore[invalid-argument-type]
+        Regridder(latlon, south, "cubic")  # ty: ignore[invalid-argument-type]
 
 
-def test_regridder_caches_one_regridder_per_method(latlon: Grid, south: Grid) -> None:
-    regridder = Regridder(latlon, south)
-    data = np.ones(latlon.shape)
-    regridder.apply(data, "linear")
-    linear = regridder._weights["linear"]
-    regridder.apply(data, "linear")
-    regridder.apply(data, "nearest")
-    assert set(regridder._weights) == {"linear", "nearest"}
-    assert regridder._weights["linear"] is linear
+def test_accepts_weights_function(latlon: Grid, south: Grid) -> None:
+    def mean_of_linear_and_nearest(source: Grid, target: Grid) -> sparse.csr_array:
+        return (
+            METHODS["linear"](source, target) + METHODS["nearest"](source, target)
+        ) / 2
 
-
-def test_methods_differ_on_same_regridder(latlon: Grid, south: Grid) -> None:
-    regridder = Regridder(latlon, south)
     data = analytic(latlon)
-    assert not np.array_equal(
-        regridder.apply(data, "linear"), regridder.apply(data, "nearest")
-    )
+    result = Regridder(latlon, south, mean_of_linear_and_nearest).apply(data)
+    linear = Regridder(latlon, south, "linear").apply(data)
+    nearest = Regridder(latlon, south, "nearest").apply(data)
+    np.testing.assert_allclose(result, (linear + nearest) / 2)
+
+
+def test_weights_function_explicit_zeros_leave_outside_points_nan(south: Grid) -> None:
+    def nearest_with_explicit_zeros(source: Grid, target: Grid) -> sparse.csr_array:
+        # Add an explicit zero weight from the first source point to every target
+        coo = METHODS["nearest"](source, target).tocoo()
+        rows = np.concatenate([coo.row, np.arange(target.size)])
+        cols = np.concatenate([coo.col, np.zeros(target.size, dtype=int)])
+        data = np.concatenate([coo.data, np.zeros(target.size)])
+        return sparse.csr_array((data, (rows, cols)), shape=coo.shape)
+
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
+    regridder = Regridder(regional, south, nearest_with_explicit_zeros)
+    expected = outside(Regridder(regional, south, "nearest"))
+    assert expected.any()
+    np.testing.assert_array_equal(outside(regridder), expected)
+
+
+def test_rejects_weights_function_with_wrong_shape(latlon: Grid, south: Grid) -> None:
+    def wrong_shape(source: Grid, target: Grid) -> sparse.csr_array:
+        return sparse.csr_array((source.size, target.size))
+
+    with pytest.raises(ValueError, match="should have shape"):
+        Regridder(latlon, south, wrong_shape)
 
 
 @pytest.mark.parametrize(
@@ -169,20 +189,20 @@ def test_nearest_great_circle_matches_nearest_indices(
     source: Grid, target: Grid
 ) -> None:
     # The indices from nearest_indices can gather data externally, e.g. torch tensors
-    regridder = Regridder(source, target)
+    regridder = Regridder(source, target, "nearest_great_circle")
     iy, ix = nearest_indices(
         source.latitudes, source.longitudes, target.latitudes, target.longitudes
     )
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
-    expected = regridder.apply(data, "nearest_great_circle")
-    inside = ~outside(regridder, "nearest_great_circle")
+    expected = regridder.apply(data)
+    inside = ~outside(regridder)
     assert inside.any()
     np.testing.assert_array_equal(gathered[..., inside], expected[..., inside])
     assert np.isnan(expected[..., ~inside]).all()
 
 
-def test_nearest_great_circle_indices_are_cached(
+def test_weights_are_built_once(
     latlon: Grid, south: Grid, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls = []
@@ -192,10 +212,10 @@ def test_nearest_great_circle_indices_are_cached(
         "nearest_indices",
         lambda *args: calls.append(args) or real(*args),
     )
-    regridder = Regridder(latlon, south)
+    regridder = Regridder(latlon, south, "nearest_great_circle")
+    assert len(calls) == 1
     data = np.random.default_rng(0).random(latlon.shape)
-    first = regridder.apply(data, "nearest_great_circle")
-    np.testing.assert_array_equal(regridder.apply(data, "nearest_great_circle"), first)
+    np.testing.assert_array_equal(regridder.apply(data), regridder.apply(data))
     assert len(calls) == 1
 
 
@@ -206,24 +226,23 @@ def test_nearest_great_circle_flags_targets_without_latlon_as_outside() -> None:
     target = Grid(points, points[::-1], "EPSG:6931")
     no_latlon = np.isnan(target.latitudes)
     assert no_latlon.any()
-    regridder = Regridder(build_global_latlon(5.0), target)
-    np.testing.assert_array_equal(outside(regridder, "nearest_great_circle"), no_latlon)
+    regridder = Regridder(build_global_latlon(5.0), target, "nearest_great_circle")
+    np.testing.assert_array_equal(outside(regridder), no_latlon)
 
 
 def test_nearest_great_circle_with_no_targets_inside() -> None:
     source = Grid([0, 1, 2], [0, 1], 4326)
     target = Grid([100, 101], [50, 51], 4326)
-    assert outside(Regridder(source, target), "nearest_great_circle").all()
+    assert outside(Regridder(source, target, "nearest_great_circle")).all()
 
 
 def test_nearest_great_circle_differs_from_nearest_near_pole(
     latlon: Grid, south: Grid
 ) -> None:
-    regridder = Regridder(latlon, south)
     flat = np.arange(latlon.size, dtype=np.float64).reshape(latlon.shape)
-    differ = regridder.apply(flat, "nearest") != regridder.apply(
-        flat, "nearest_great_circle"
-    )
+    differ = Regridder(latlon, south, "nearest").apply(flat) != Regridder(
+        latlon, south, "nearest_great_circle"
+    ).apply(flat)
     assert differ.any()
     assert south.latitudes[differ].min() < -89
 
@@ -231,22 +250,20 @@ def test_nearest_great_circle_differs_from_nearest_near_pole(
 def test_nearest_great_circle_handles_leading_dimensions_and_nan(
     latlon: Grid, south: Grid
 ) -> None:
-    regridder = Regridder(latlon, south)
+    regridder = Regridder(latlon, south, "nearest_great_circle")
     data = np.random.default_rng(0).random((4, 2, *latlon.shape))
     data[..., :30, :] = np.nan  # southernmost 30 degrees
-    result = regridder.apply(data, "nearest_great_circle")
+    result = regridder.apply(data)
     assert result.shape == (4, 2, *south.shape)
-    np.testing.assert_array_equal(
-        result[3, 1], regridder.apply(data[3, 1], "nearest_great_circle")
-    )
+    np.testing.assert_array_equal(result[3, 1], regridder.apply(data[3, 1]))
     assert np.isnan(result[..., south.latitudes < -61]).all()
     assert not np.isnan(result[..., south.latitudes > -59]).any()
 
 
 def test_nearest_great_circle_outside_source_is_nan(south: Grid) -> None:
     regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
-    result = Regridder(regional, south).apply(
-        np.ones(regional.shape), "nearest_great_circle"
+    result = Regridder(regional, south, "nearest_great_circle").apply(
+        np.ones(regional.shape)
     )
     assert np.isnan(result).any()
     np.testing.assert_allclose(result[~np.isnan(result)], 1.0)
@@ -259,28 +276,28 @@ def test_outside_matches_direct_transform() -> None:
     edge = source.x_bounds[0, 0]
     x0, y0 = Transformer.from_crs(4326, 32630, always_xy=True).transform(edge, 52.5)
     target = Grid(x0 + np.arange(-490, 500, 20.0), [y0, y0 + 20], 32630)
-    regridder = Regridder(source, target)
     # Transform straight from the target CRS, not through latitude and longitude
     x, y = Transformer.from_crs(32630, 4326, always_xy=True).transform(
         *np.meshgrid(target.x_points, target.y_points)
     )
     want = ~source.contains(x, y)
-    np.testing.assert_array_equal(outside(regridder, "linear"), want)
+    np.testing.assert_array_equal(outside(Regridder(source, target, "linear")), want)
     assert want.any()
     assert not want.all()
     # nearest_great_circle leaves the same points NaN
-    np.testing.assert_array_equal(outside(regridder, "nearest_great_circle"), want)
+    regridder = Regridder(source, target, "nearest_great_circle")
+    np.testing.assert_array_equal(outside(regridder), want)
 
 
 def test_every_method_is_registered() -> None:
-    assert set(_METHODS) == set(get_args(Method))
+    assert set(METHODS) == set(get_args(Method))
 
 
 @pytest.mark.parametrize("method", get_args(Method))
 def test_outside_source_is_nan_for_each_method(method: Method) -> None:
     # A lat-lon target, as area weighting requires the source coordinate system
     regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
-    nan = outside(Regridder(regional, build_global_latlon(2.0)), method)
+    nan = outside(Regridder(regional, build_global_latlon(2.0), method))
     assert nan.any()
     assert not nan.all()
 
@@ -288,7 +305,8 @@ def test_outside_source_is_nan_for_each_method(method: Method) -> None:
 def test_area_weighted_nan_spreads_to_overlapping_cells(latlon: Grid) -> None:
     data = np.ones(latlon.shape)
     data[100, 200] = np.nan
-    result = Regridder(latlon, build_global_latlon(2.0)).apply(data, "area_weighted")
+    regridder = Regridder(latlon, build_global_latlon(2.0), "area_weighted")
+    result = regridder.apply(data)
     assert np.isnan(result).sum() == 1
     assert np.isnan(result[50, 100])
 
@@ -299,11 +317,11 @@ def test_area_weighted_wraps_longitude() -> None:
     # Cells offset by half a degree, the first straddling the source's first
     # and last columns
     target = Grid(np.arange(-180.0, 180.0, 1.0), [0.0, 10.0], "EPSG:4326")
-    result = Regridder(source, target).apply(data, "area_weighted")
+    result = Regridder(source, target, "area_weighted").apply(data)
     np.testing.assert_allclose(result[:, 0], (data[0, 0] + data[0, -1]) / 2)
     np.testing.assert_allclose(result[:, 1:], data[:2, :-1] + 0.5)
 
 
 def test_area_weighted_rejects_different_crs(latlon: Grid, south: Grid) -> None:
     with pytest.raises(ValueError, match="share a CRS"):
-        Regridder(latlon, south).apply(np.ones(latlon.shape), "area_weighted")
+        Regridder(latlon, south, "area_weighted")

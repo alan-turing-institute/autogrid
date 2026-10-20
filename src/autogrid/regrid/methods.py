@@ -5,7 +5,8 @@ the weight of each source point in each target point, both flattened. Target poi
 outside the source grid have empty rows, and weights are never explicitly zero, so that
 only the source points that contribute to a target point can make it NaN.
 
-To add a method, write a function like these and add it to Method and _METHODS.
+A Regridder takes either the name of one of these methods or any function like them. To
+add a named method, write a function like these and add it to Method and METHODS.
 """
 
 from collections.abc import Callable
@@ -21,6 +22,9 @@ from autogrid.grids.axes import FULL_TURN, normalise_longitude
 from autogrid.points import nearest_indices
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
+
+# Builds the regridding weights from a source Grid to a target Grid
+WeightsFunction = Callable[[Grid, Grid], sparse.csr_array]
 
 # Fraction of a target cell below which area weighting ignores an overlap
 MIN_OVERLAP_FRACTION = 1e-8
@@ -207,7 +211,7 @@ def _overlaps(
 
 
 # Builds the weights of each regridding method for a (source, target) pair
-_METHODS: dict[Method, Callable[[Grid, Grid], sparse.csr_array]] = {
+METHODS: dict[Method, WeightsFunction] = {
     "linear": linear,
     "nearest": nearest,
     "nearest_great_circle": nearest_great_circle,

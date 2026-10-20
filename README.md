@@ -4,7 +4,7 @@ Regrid geophysical fields between latitude-longitude and projected grids, such a
 between scattered points, using great circle distances where it matters.
 
 - `Grid`: a rectilinear grid of points in any CRS, with its latitudes and longitudes.
-- `Regridder`: regrid arrays from one `Grid` to another, caching the weights.
+- `Regridder`: regrid arrays from one `Grid` to another with one method, reusing the weights.
 - `autogrid.points`: nearest neighbours and Gaussian weighted means of plain latitude/longitude
 points, with no CRS needed.
 
@@ -12,8 +12,8 @@ points, with no CRS needed.
 
 ### Regrid a global field onto a polar grid
 
-Build one `Regridder` per pair of grids and apply it to every field. Its weights are computed on
-first use of each method and reused after that.
+Build one `Regridder` per pair of grids and method, and apply it to every field. Its weights are
+computed when it is created and reused after that.
 
 ```python
 import numpy as np
@@ -32,8 +32,8 @@ target = build_ease2("south", "25p0km", shape=(432, 432))
 field = np.cos(np.deg2rad(source.latitudes)) * np.sin(np.deg2rad(source.longitudes))
 forecast = np.stack([field, 2 * field, 3 * field])
 
-regridder = Regridder(source, target)
-regridded = regridder.apply(forecast, method="linear")  # shape (3, 432, 432)
+regridder = Regridder(source, target, method="linear")
+regridded = regridder.apply(forecast)  # shape (3, 432, 432)
 ```
 
 The available methods are:
@@ -45,6 +45,10 @@ The available methods are:
 source, nearest in degrees) |
 | `"nearest_great_circle"` | Nearest source point along the Earth's surface |
 | `"area_weighted"` | Weighted area-overlap regridding, for grids that share a CRS |
+
+`method` can also be a function `(source, target) -> scipy.sparse.csr_array` that builds your own
+weights, with shape `(target.size, source.size)`. See `autogrid.regrid.methods` for the rules the
+weights must follow.
 
 Target points outside the source grid are NaN, and so are any target points computed from NaN or
 masked source values. For the `"linear"` and `"nearest"` methods, target points between the

@@ -121,7 +121,7 @@ def test_point_methods_match_iris(
 ) -> None:
     source, target = PAIRS[pair]
     data = random_field(source)
-    result = Regridder(source, target).apply(data, method)
+    result = Regridder(source, target, method).apply(data)
     # Iris masks beyond the outermost source points, where the Regridder holds
     # the edge values out to the edge of the source cells, so compare inside them
     inside = ~np.ma.getmaskarray(iris_regrid(scheme, source, target, data.data))
@@ -158,7 +158,7 @@ AREA_PAIRS = {
 def test_area_weighted_matches_iris(pair: str) -> None:
     source, target = AREA_PAIRS[pair]
     data = random_field(source)
-    result = Regridder(source, target).apply(data, "area_weighted")
+    result = Regridder(source, target, "area_weighted").apply(data)
     # mdtol=0 makes NaN any target cell with a NaN source cell, as the Regridder does
     expected = iris_regrid(AreaWeighted(mdtol=0), source, target, data)
     np.testing.assert_allclose(result, np.ma.filled(expected, np.nan), rtol=1e-6)
