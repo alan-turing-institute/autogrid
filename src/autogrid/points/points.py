@@ -63,18 +63,18 @@ def gaussian_mean(
     target_lats: ArrayLike,
     target_lons: ArrayLike,
     distance_scale_km: float,
-    min_weight: float = 1e-10,
 ) -> NDArray[np.floating]:
     """Interpolate scattered observations onto target points with Gaussian weights.
 
     Each target point is the weighted mean of every observation, with weight
-    exp(-0.5 * (d / distance_scale_km) ** 2) for great circle distance d,
-    floored at min_weight. This suits observations whose positions change from
-    one time to the next, such as Argo floats, so no weights are cached.
+    exp(-0.5 * (d / distance_scale_km) ** 2) for great circle distance d. This
+    suits observations whose positions change from one time to the next, such
+    as Argo floats, so no weights are cached.
 
-    With min_weight > 0, target points far from every observation tend to the
-    unweighted mean of the observations rather than to NaN. Set min_weight to 0
-    to leave such points NaN once their weights underflow.
+    Target points far from every observation take the values of the nearest
+    ones, since their weights dominate. Weights underflow to zero beyond about
+    37 * distance_scale_km, so target points that far from every valid
+    observation are NaN.
 
     Every observation is weighted at every target point, which costs time
     proportional to their product. Memory is bounded by computing the weights
@@ -90,7 +90,6 @@ def gaussian_mean(
             e.g. Grid.latitudes.
         target_lons: Longitude of each target point in degrees, of the same shape.
         distance_scale_km: Standard deviation of the Gaussian weights in km.
-        min_weight: Smallest weight given to any observation.
 
     Returns:
         An array with the leading dimensions of values followed by the target
@@ -98,8 +97,8 @@ def gaussian_mean(
 
     Raises:
         ValueError: If latitudes and longitudes differ in shape, are empty, or
-            are not all finite, if values do not end with the source shape, if
-            distance_scale_km is not positive, or if min_weight is negative.
+            are not all finite, if values do not end with the source shape, or
+            if distance_scale_km is not positive.
     """
     source_lats, source_lons = check_points("Source", source_lats, source_lons)
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
@@ -114,9 +113,6 @@ def gaussian_mean(
     if not distance_scale_km > 0:
         msg = f"distance_scale_km must be positive, but got {distance_scale_km}."
         raise ValueError(msg)
-    if not min_weight >= 0:
-        msg = f"min_weight must not be negative, but got {min_weight}."
-        raise ValueError(msg)
 
     leading_shape = values.shape[: values.ndim - len(source_shape)]
     flat_values = values.reshape(-1, source_lats.size).astype(np.float64)
@@ -128,17 +124,14 @@ def gaussian_mean(
     source_xyz = unit_vectors(source_lats, source_lons)
     target_xyz = unit_vectors(target_lats, target_lons)
 
-    def gaussian(chord: NDArray[np.float64]) -> NDArray[np.float64]:
-        weights = np.exp(-0.5 * (chord_to_km(chord) / distance_scale_km) ** 2)
-        return weights.clip(min=min_weight)
-
     result = np.empty((flat_values.shape[0], len(target_xyz)))
     chunk = max(1, _CHUNK_ELEMENTS // len(source_xyz))
     for start in range(0, len(target_xyz), chunk):
         block = slice(start, start + chunk)
         # |a - b|^2 = 2 - 2 a.b for unit vectors a and b
         chord_sq = 2.0 - 2.0 * (target_xyz[block] @ source_xyz.T)
-        weights = gaussian(np.sqrt(chord_sq.clip(min=0.0)))
+        distance_km = chord_to_km(np.sqrt(chord_sq.clip(min=0.0)))
+        weights = np.exp(-0.5 * (distance_km / distance_scale_km) ** 2)
         with np.errstate(invalid="ignore", divide="ignore"):
             result[:, block] = (filled @ weights.T) / (valid @ weights.T)
 

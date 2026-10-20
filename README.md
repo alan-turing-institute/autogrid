@@ -135,7 +135,8 @@ gridded = gaussian_mean(
 ```
 
 Every observation contributes to every target point, so target points far from all observations
-tend to the unweighted mean of the observations rather than to NaN.
+take the values of the nearest ones. Weights underflow to zero beyond about 37 times
+`distance_scale_km`, so target points that far from every observation are NaN.
 
 ### Plot a field on its own projection
 

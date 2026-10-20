@@ -111,7 +111,7 @@ def _argo_source(
     grid_lat: np.ndarray,
     grid_lon: np.ndarray,
     distance_scale_km: float,
-    min_weight: float = 1e-10,
+    min_weight: float,
 ) -> np.ndarray:
     # Dense pairwise weights, as in cryocast's ArgoSource
     distance_km = _haversine_km(
@@ -134,11 +134,18 @@ def observations() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return lat, lon, rng.normal(size=(3, 50))
 
 
-@pytest.mark.parametrize("distance_scale_km", [100.0, 2000.0])
+# At cryocast's default scale of 2000 km its floor of 1e-10 on the weights only
+# affects observations over 13,000 km away, which make no difference here. At
+# 100 km the floor would dominate far from every observation, so compare
+# against unfloored weights
+@pytest.mark.parametrize(
+    ("distance_scale_km", "min_weight"), [(100.0, 0.0), (2000.0, 1e-10)]
+)
 def test_gaussian_mean_matches_argo_source(
     target: Grid,
     observations: tuple[np.ndarray, np.ndarray, np.ndarray],
     distance_scale_km: float,
+    min_weight: float,
 ) -> None:
     lat, lon, values = observations
     result = gaussian_mean(
@@ -147,7 +154,13 @@ def test_gaussian_mean_matches_argo_source(
     assert result.shape == (3, *target.shape)
     for got, variable in zip(result, values, strict=True):
         expected = _argo_source(
-            lat, lon, variable, target.latitudes, target.longitudes, distance_scale_km
+            lat,
+            lon,
+            variable,
+            target.latitudes,
+            target.longitudes,
+            distance_scale_km,
+            min_weight,
         )
         np.testing.assert_allclose(got, expected, rtol=1e-9, atol=1e-12)
 
@@ -172,14 +185,17 @@ def test_gaussian_mean_recovers_observations_at_their_positions() -> None:
     np.testing.assert_allclose(result, values)
 
 
-def test_gaussian_mean_far_points_tend_to_mean_of_observations() -> None:
-    lat, lon, values = np.array([60.0, 61.0]), np.array([0.0, 1.0]), [1.0, 3.0]
-    result = gaussian_mean(lat, lon, values, [-60.0], [180.0], distance_scale_km=50)
-    np.testing.assert_allclose(result, [2.0])
-    zero_floor = gaussian_mean(
-        lat, lon, values, [-60.0], [180.0], distance_scale_km=50, min_weight=0
+def test_gaussian_mean_far_points_take_nearest_observation() -> None:
+    # About 2200 and 3300 km away, so the nearer weight is 2e5 times larger
+    result = gaussian_mean(
+        [0.0, 0.0], [10.0, 0.0], [1.0, 0.0], [0.0], [30.0], distance_scale_km=500
     )
-    assert np.isnan(zero_floor).all()
+    np.testing.assert_allclose(result, [1.0], atol=1e-5)
+
+
+def test_gaussian_mean_is_nan_where_all_weights_underflow() -> None:
+    result = gaussian_mean([60.0], [0.0], [1.0], [-60.0], [180.0], 50.0)
+    assert np.isnan(result).all()
 
 
 def test_gaussian_mean_wraps_across_dateline() -> None:
@@ -230,9 +246,8 @@ def test_gaussian_mean_keeps_scalar_target_shape() -> None:
         ({"source_lats": []}, "Source latitudes and longitudes must have"),
         ({"target_lons": [np.nan]}, "Target .* must all be finite"),
         ({"distance_scale_km": 0.0}, "distance_scale_km must be positive"),
-        ({"min_weight": -1.0}, "min_weight must not be negative"),
     ],
-    ids=["values-shape", "source-shape", "target-nan", "scale", "min-weight"],
+    ids=["values-shape", "source-shape", "target-nan", "scale"],
 )
 def test_gaussian_mean_rejects_invalid_arguments(
     kwargs: dict[str, Any], match: str
