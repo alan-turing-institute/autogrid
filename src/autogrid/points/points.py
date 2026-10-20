@@ -8,10 +8,10 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.spatial import KDTree
 
-from autogrid.points.sphere import check_points, chord_to_km, unit_vectors
+from autogrid.points._geometry import chord_to_km, unit_vectors
 
 # Largest number of (target, source) weights held in memory at once by
-# gaussian_mean
+# gaussian_weighted_mean
 _CHUNK_ELEMENTS = 2**24
 
 
@@ -56,7 +56,7 @@ def nearest_indices(
     return np.unravel_index(flat_indices, source_lats.shape)
 
 
-def gaussian_mean(
+def gaussian_weighted_mean(
     source_lats: ArrayLike,
     source_lons: ArrayLike,
     values: ArrayLike,
@@ -72,9 +72,11 @@ def gaussian_mean(
     as Argo floats, so no weights are cached.
 
     Target points far from every observation take the values of the nearest
-    ones, since their weights dominate. Weights underflow to zero beyond about
-    37 * distance_scale_km, so target points that far from every valid
-    observation are NaN.
+    ones, since their weights dominate. Weights are scaled relative to the
+    nearest observation before exponentiating, so they do not underflow
+    however far away the observations are. If the nearest observation is NaN
+    for some variable, that variable can still be NaN far from every valid
+    observation.
 
     Every observation is weighted at every target point, which costs time
     proportional to their product. Memory is bounded by computing the weights
@@ -84,8 +86,9 @@ def gaussian_mean(
         source_lats: Latitude of each observation in degrees, of any shape.
         source_lons: Longitude of each observation in degrees, of the same shape.
         values: Observed values, whose trailing dimensions match the source
-            shape, e.g. (n_variables, n_obs). NaN or masked observations are
-            ignored.
+            shape, e.g. (n_variables, n_obs). NaN or infinite observations are
+            ignored. Only NaN marks missing values, so fill a masked array with
+            values.filled(np.nan) first.
         target_lats: Latitude of each target point in degrees, of any shape,
             e.g. Grid.latitudes.
         target_lons: Longitude of each target point in degrees, of the same shape.
@@ -102,7 +105,7 @@ def gaussian_mean(
     """
     source_lats, source_lons = check_points("Source", source_lats, source_lons)
     target_lats, target_lons = check_points("Target", target_lats, target_lons)
-    values = np.ma.masked_invalid(values)
+    values = np.asarray(values)
     source_shape = source_lats.shape
     if values.shape[values.ndim - len(source_shape) :] != source_shape:
         msg = (
@@ -115,11 +118,12 @@ def gaussian_mean(
         raise ValueError(msg)
 
     leading_shape = values.shape[: values.ndim - len(source_shape)]
-    flat_values = values.reshape(-1, source_lats.size).astype(np.float64)
-    # Drop NaN or masked observations from both the weighted sum and the sum of
-    # weights
-    valid = (~np.ma.getmaskarray(flat_values)).astype(np.float64)
-    filled = np.ma.filled(flat_values, 0.0)
+    flat_values = values.reshape(-1, source_lats.size).astype(np.float64, copy=False)
+    # Drop NaN or infinite observations from both the weighted sum and the sum
+    # of weights
+    is_valid = np.isfinite(flat_values)
+    valid = is_valid.astype(np.float64)
+    filled = np.where(is_valid, flat_values, 0.0)
 
     source_xyz = unit_vectors(source_lats, source_lons)
     target_xyz = unit_vectors(target_lats, target_lons)
@@ -131,10 +135,35 @@ def gaussian_mean(
         # |a - b|^2 = 2 - 2 a.b for unit vectors a and b
         chord_sq = 2.0 - 2.0 * (target_xyz[block] @ source_xyz.T)
         distance_km = chord_to_km(np.sqrt(chord_sq.clip(min=0.0)))
-        weights = np.exp(-0.5 * (distance_km / distance_scale_km) ** 2)
+        scaled = (distance_km / distance_scale_km) ** 2
+        # Subtracting each target point's smallest exponent rescales its weights
+        # without changing their weighted mean, and keeps the largest weight at 1
+        # so that weights far from every observation do not all underflow to 0
+        weights = np.exp(-0.5 * (scaled - scaled.min(axis=1, keepdims=True)))
         with np.errstate(invalid="ignore", divide="ignore"):
             result[:, block] = (filled @ weights.T) / (valid @ weights.T)
 
     result[~np.isfinite(result)] = np.nan
     result = result.astype(np.result_type(values.dtype, np.float32))
     return result.reshape((*leading_shape, *target_lats.shape))
+
+
+def check_points(
+    name: str, latitudes: ArrayLike, longitudes: ArrayLike
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Return latitudes and longitudes as float arrays, checking they are valid."""
+    latitudes = np.asarray(latitudes, dtype=np.float64)
+    longitudes = np.asarray(longitudes, dtype=np.float64)
+    if latitudes.shape != longitudes.shape:
+        msg = (
+            f"{name} latitudes and longitudes must have the same shape, but got "
+            f"shapes {latitudes.shape} and {longitudes.shape}."
+        )
+        raise ValueError(msg)
+    if latitudes.size == 0:
+        msg = f"{name} points must not be empty."
+        raise ValueError(msg)
+    if not (np.isfinite(latitudes).all() and np.isfinite(longitudes).all()):
+        msg = f"{name} latitudes and longitudes must all be finite."
+        raise ValueError(msg)
+    return latitudes, longitudes

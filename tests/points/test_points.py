@@ -6,8 +6,8 @@ import pytest
 import autogrid.points.points
 from autogrid import Grid
 from autogrid.grids import build_ease2, build_global_latlon
-from autogrid.points import gaussian_mean, nearest_indices
-from autogrid.points.sphere import EARTH_RADIUS_KM
+from autogrid.points import gaussian_weighted_mean, nearest_indices
+from autogrid.points._geometry import EARTH_RADIUS_KM
 
 
 def _haversine_km(
@@ -141,14 +141,14 @@ def observations() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 @pytest.mark.parametrize(
     ("distance_scale_km", "min_weight"), [(100.0, 0.0), (2000.0, 1e-10)]
 )
-def test_gaussian_mean_matches_argo_source(
+def test_gaussian_weighted_mean_matches_argo_source(
     target: Grid,
     observations: tuple[np.ndarray, np.ndarray, np.ndarray],
     distance_scale_km: float,
     min_weight: float,
 ) -> None:
     lat, lon, values = observations
-    result = gaussian_mean(
+    result = gaussian_weighted_mean(
         lat, lon, values, target.latitudes, target.longitudes, distance_scale_km
     )
     assert result.shape == (3, *target.shape)
@@ -165,76 +165,90 @@ def test_gaussian_mean_matches_argo_source(
         np.testing.assert_allclose(got, expected, rtol=1e-9, atol=1e-12)
 
 
-def test_gaussian_mean_chunking_does_not_change_result(
+def test_gaussian_weighted_mean_chunking_does_not_change_result(
     target: Grid,
     observations: tuple[np.ndarray, np.ndarray, np.ndarray],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     lat, lon, values = observations
     args = (lat, lon, values, target.latitudes, target.longitudes, 500.0)
-    whole = gaussian_mean(*args)
+    whole = gaussian_weighted_mean(*args)
     # Chunks of 7 target points, so the last chunk is partial
     monkeypatch.setattr(autogrid.points.points, "_CHUNK_ELEMENTS", 7 * lat.size)
-    np.testing.assert_allclose(gaussian_mean(*args), whole, rtol=1e-12, atol=1e-14)
+    np.testing.assert_allclose(
+        gaussian_weighted_mean(*args), whole, rtol=1e-12, atol=1e-14
+    )
 
 
-def test_gaussian_mean_recovers_observations_at_their_positions() -> None:
+def test_gaussian_weighted_mean_recovers_observations_at_their_positions() -> None:
     lat, lon = np.array([-70.0, -65.0, -75.0]), np.array([0.0, 90.0, -120.0])
     values = np.array([1.0, 2.0, 3.0])
-    result = gaussian_mean(lat, lon, values, lat, lon, distance_scale_km=10.0)
+    result = gaussian_weighted_mean(lat, lon, values, lat, lon, distance_scale_km=10.0)
     np.testing.assert_allclose(result, values)
 
 
-def test_gaussian_mean_far_points_take_nearest_observation() -> None:
+def test_gaussian_weighted_mean_far_points_take_nearest_observation() -> None:
     # About 2200 and 3300 km away, so the nearer weight is 2e5 times larger
-    result = gaussian_mean(
+    result = gaussian_weighted_mean(
         [0.0, 0.0], [10.0, 0.0], [1.0, 0.0], [0.0], [30.0], distance_scale_km=500
     )
     np.testing.assert_allclose(result, [1.0], atol=1e-5)
 
 
-def test_gaussian_mean_is_nan_where_all_weights_underflow() -> None:
-    result = gaussian_mean([60.0], [0.0], [1.0], [-60.0], [180.0], 50.0)
-    assert np.isnan(result).all()
+def test_gaussian_weighted_mean_very_far_points_take_nearest_observation() -> None:
+    # The target is antipodal to (60, 0) and about 18900 km from (50, 0), over
+    # 370 times distance_scale_km, where unscaled weights would underflow to 0
+    result = gaussian_weighted_mean(
+        [50.0, 60.0], [0.0, 0.0], [1.0, 0.0], [-60.0], [180.0], distance_scale_km=50
+    )
+    np.testing.assert_allclose(result, [1.0])
 
 
-def test_gaussian_mean_wraps_across_dateline() -> None:
+def test_gaussian_weighted_mean_wraps_across_dateline() -> None:
     # 179 and -179 are 2 degrees apart across the dateline, not 358
-    result = gaussian_mean(
+    result = gaussian_weighted_mean(
         [0.0, 0.0], [179.0, 0.0], [1.0, 0.0], [0.0], [-179.0], distance_scale_km=500
     )
     np.testing.assert_allclose(result, [1.0])
 
 
-def test_gaussian_mean_ignores_nan_observations_per_slice() -> None:
+def test_gaussian_weighted_mean_ignores_nan_observations_per_slice() -> None:
     lat, lon = np.array([0.0, 0.0, 0.0]), np.array([0.0, 1.0, 2.0])
     values = np.array([[1.0, np.nan, 3.0], [1.0, 2.0, 3.0], [np.nan] * 3])
-    result = gaussian_mean(lat, lon, values, lat, lon, distance_scale_km=50.0)
-    expected = gaussian_mean(lat[[0, 2]], lon[[0, 2]], [1.0, 3.0], lat, lon, 50.0)
+    result = gaussian_weighted_mean(lat, lon, values, lat, lon, distance_scale_km=50.0)
+    expected = gaussian_weighted_mean(
+        lat[[0, 2]], lon[[0, 2]], [1.0, 3.0], lat, lon, 50.0
+    )
     np.testing.assert_allclose(result[0], expected)
     assert np.isfinite(result[1]).all()
     assert np.isnan(result[2]).all()
 
 
-def test_gaussian_mean_ignores_masked_observations() -> None:
+def test_gaussian_weighted_mean_ignores_infinite_observations() -> None:
     lat, lon = np.array([0.0, 0.0]), np.array([0.0, 1.0])
-    values = np.ma.masked_array([1.0, 100.0], mask=[False, True])
-    result = gaussian_mean(lat, lon, values, lat[:1], lon[:1], 50.0)
+    result = gaussian_weighted_mean(lat, lon, [1.0, np.inf], lat[:1], lon[:1], 50.0)
     np.testing.assert_allclose(result, [1.0])
-    assert not np.ma.isMaskedArray(result)
 
 
-def test_gaussian_mean_keeps_source_and_target_shapes(target: Grid) -> None:
+def test_gaussian_weighted_mean_keeps_float32_values() -> None:
+    values = np.array([1.0, 2.0], dtype=np.float32)
+    result = gaussian_weighted_mean([0.0, 0.0], [0.0, 1.0], values, [0.0], [0.5], 50.0)
+    assert result.dtype == np.float32
+
+
+def test_gaussian_weighted_mean_keeps_source_and_target_shapes(target: Grid) -> None:
     lat, lon = np.meshgrid(np.linspace(-80, -60, 4), np.linspace(-180, 180, 5))
     values = np.ones((2, *lat.shape), dtype=np.float32)
-    result = gaussian_mean(lat, lon, values, target.latitudes, target.longitudes, 1e3)
+    result = gaussian_weighted_mean(
+        lat, lon, values, target.latitudes, target.longitudes, 1e3
+    )
     assert result.shape == (2, *target.shape)
     assert result.dtype == np.float32
     np.testing.assert_allclose(result, 1.0, rtol=1e-6)
 
 
-def test_gaussian_mean_keeps_scalar_target_shape() -> None:
-    result = gaussian_mean([0.0], [0.0], [1.0], 0.0, 0.0, 100.0)
+def test_gaussian_weighted_mean_keeps_scalar_target_shape() -> None:
+    result = gaussian_weighted_mean([0.0], [0.0], [1.0], 0.0, 0.0, 100.0)
     assert result.shape == ()
     np.testing.assert_allclose(result, 1.0)
 
@@ -249,7 +263,7 @@ def test_gaussian_mean_keeps_scalar_target_shape() -> None:
     ],
     ids=["values-shape", "source-shape", "target-nan", "scale"],
 )
-def test_gaussian_mean_rejects_invalid_arguments(
+def test_gaussian_weighted_mean_rejects_invalid_arguments(
     kwargs: dict[str, Any], match: str
 ) -> None:
     args: dict[str, Any] = {
@@ -261,4 +275,4 @@ def test_gaussian_mean_rejects_invalid_arguments(
         "distance_scale_km": 100.0,
     } | kwargs
     with pytest.raises(ValueError, match=match):
-        gaussian_mean(**args)
+        gaussian_weighted_mean(**args)

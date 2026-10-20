@@ -112,15 +112,15 @@ masked. For a 2D source, `nearest_indices` returns an `(iy, ix)` pair to use as 
 
 ### Grid scattered observations
 
-`gaussian_mean` sets each target point to the weighted mean of nearby observations, using Gaussian
-weights based on great circle distance. This suits observations whose positions change from one
-entry to the next, so no weights are cached.
+`gaussian_weighted_mean` sets each target point to the weighted mean of nearby observations,
+using Gaussian weights based on great circle distance. This suits observations whose positions
+change from one entry to the next, so no weights are cached.
 
 ```python
 import numpy as np
 
 from autogrid.grids import build_ease2
-from autogrid.points import gaussian_mean
+from autogrid.points import gaussian_weighted_mean
 
 rng = np.random.default_rng(0)
 obs_lats = rng.uniform(55, 90, 500)
@@ -129,7 +129,7 @@ obs_temperature = rng.normal(0, 1, 500)
 
 target = build_ease2("north", "25p0km", shape=(432, 432))
 target_lons, target_lats = target.lonlat()
-gridded = gaussian_mean(
+gridded = gaussian_weighted_mean(
     obs_lats,
     obs_lons,
     obs_temperature,
@@ -140,8 +140,8 @@ gridded = gaussian_mean(
 ```
 
 Every observation contributes to every target point, so target points far from all observations
-take the values of the nearest ones. Weights underflow to zero beyond about 37 times
-`distance_scale_km`, so target points that far from every observation are NaN.
+take the values of the nearest ones, however far away they are. Only NaN marks missing
+observations, so fill a masked array with `.filled(np.nan)` first.
 
 ### Plot a field on its own projection
 
