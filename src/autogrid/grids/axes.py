@@ -34,10 +34,6 @@ def guess_bounds(points: NDArray[np.float64]) -> NDArray[np.float64]:
 
     The outer bounds are half a spacing beyond the first and last points.
     """
-    if len(points) < 2:
-        msg = "At least two points are needed to infer cell bounds."
-        raise ValueError(msg)
-    # Extrapolate one point beyond each end, so every edge is a midpoint
     first, last = 2 * points[0] - points[1], 2 * points[-1] - points[-2]
     padded = np.concatenate([[first], points, [last]])
     edges = (padded[:-1] + padded[1:]) / 2
