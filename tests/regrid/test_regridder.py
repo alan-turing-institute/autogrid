@@ -15,6 +15,11 @@ def analytic(grid: Grid) -> np.ndarray:
     return np.cos(np.deg2rad(grid.latitudes)) * np.sin(np.deg2rad(grid.longitudes))
 
 
+def outside(regridder: Regridder, method: Method) -> np.ndarray:
+    """Flag the target points left NaN for a source field with no NaN values."""
+    return np.isnan(regridder.apply(np.ones(regridder.source.shape), method))
+
+
 @pytest.mark.parametrize(
     ("method", "atol"),
     [("linear", 1e-3), ("nearest", 2e-2), ("nearest_great_circle", 2e-2)],
@@ -104,7 +109,7 @@ def test_integer_input_is_regridded_to_float(south: Grid) -> None:
     for method in methods:
         result = regridder.apply(data, method)
         assert np.issubdtype(result.dtype, np.floating)
-        np.testing.assert_array_equal(np.isnan(result), regridder.outside(method))
+        np.testing.assert_array_equal(np.isnan(result), outside(regridder, method))
 
 
 def test_nan_input_propagates(latlon: Grid, south: Grid) -> None:
@@ -171,7 +176,7 @@ def test_nearest_great_circle_matches_nearest_indices(
     data = np.random.default_rng(0).random((3, *source.shape))
     gathered = data[..., iy, ix]
     expected = regridder.apply(data, "nearest_great_circle")
-    inside = ~regridder.outside("nearest_great_circle")
+    inside = ~outside(regridder, "nearest_great_circle")
     assert inside.any()
     np.testing.assert_array_equal(gathered[..., inside], expected[..., inside])
     assert np.isnan(expected[..., ~inside]).all()
@@ -214,16 +219,14 @@ def test_nearest_great_circle_flags_targets_without_latlon_as_outside() -> None:
     target = Grid(points, points[::-1], "EPSG:6931")
     no_latlon = np.isnan(target.latitudes)
     assert no_latlon.any()
-    outside = Regridder(build_global_latlon(5.0), target).outside(
-        "nearest_great_circle"
-    )
-    np.testing.assert_array_equal(outside, no_latlon)
+    regridder = Regridder(build_global_latlon(5.0), target)
+    np.testing.assert_array_equal(outside(regridder, "nearest_great_circle"), no_latlon)
 
 
 def test_nearest_great_circle_with_no_targets_inside() -> None:
     source = Grid([0, 1, 2], [0, 1], 4326)
     target = Grid([100, 101], [50, 51], 4326)
-    assert Regridder(source, target).outside("nearest_great_circle").all()
+    assert outside(Regridder(source, target), "nearest_great_circle").all()
 
 
 def test_nearest_great_circle_differs_from_nearest_near_pole(
@@ -275,13 +278,11 @@ def test_outside_matches_direct_transform() -> None:
         *np.meshgrid(target.x_points, target.y_points)
     )
     want = ~source.contains(x, y)
-    np.testing.assert_array_equal(regridder.outside("linear"), want)
+    np.testing.assert_array_equal(outside(regridder, "linear"), want)
     assert want.any()
     assert not want.all()
-    # nearest_great_circle flags the same points
-    np.testing.assert_array_equal(regridder.outside("nearest_great_circle"), want)
-    nan = np.isnan(regridder.apply(np.ones(source.shape), "nearest_great_circle"))
-    np.testing.assert_array_equal(nan, want)
+    # nearest_great_circle leaves the same points NaN
+    np.testing.assert_array_equal(outside(regridder, "nearest_great_circle"), want)
 
 
 def test_every_method_is_registered() -> None:
@@ -289,15 +290,12 @@ def test_every_method_is_registered() -> None:
 
 
 @pytest.mark.parametrize("method", get_args(Method))
-def test_outside_matches_nan_for_each_method(method: Method) -> None:
+def test_outside_source_is_nan_for_each_method(method: Method) -> None:
     # A lat-lon target, as area weighting requires the source coordinate system
     regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
-    regridder = Regridder(regional, build_global_latlon(2.0))
-    result = regridder.apply(np.ones(regional.shape), method)
-    outside = regridder.outside(method)
-    np.testing.assert_array_equal(np.isnan(result), outside)
-    assert outside.any()
-    assert not outside.all()
+    nan = outside(Regridder(regional, build_global_latlon(2.0)), method)
+    assert nan.any()
+    assert not nan.all()
 
 
 def test_area_weighted_nan_spreads_to_overlapping_cells(latlon: Grid) -> None:

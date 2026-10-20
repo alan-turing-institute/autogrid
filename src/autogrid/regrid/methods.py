@@ -63,8 +63,8 @@ def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
 def linear(source: Grid, target: Grid) -> sparse.csr_array:
     """Bilinear interpolation in the source grid's own coordinates.
 
-    Target points between the outermost source points and the edge of the
-    source cells take the value of the edge cell.
+    Target points between the outermost source points and the edge of the source cells
+    take the value of the edge cell.
     """
     rows, x, y = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
@@ -100,9 +100,9 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
 def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
     """Nearest source point along the Earth's surface, from points.nearest_indices.
 
-    Target points are outside as for linear, in the source CRS. Source points with
-    no latitude and longitude, such as those beyond the valid area of the source
-    CRS, are never nearest.
+    Target points are outside as for linear, in the source CRS. Source points with no
+    latitude and longitude, such as those beyond the valid area of the source CRS, are
+    never nearest.
     """
     rows, _, _ = _find_target_points(source, target)
     if not len(rows):
@@ -125,14 +125,13 @@ def _bracket(
 ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[np.float64]]:
     """Find the neighbouring points either side of each value along one axis.
 
-    Values beyond the outermost points are clamped to them. A circular axis
-    wraps from its last point to its first, so values must already be shifted
-    to within a turn of the points.
+    Values beyond the outermost points are clamped to them. A circular axis wraps from
+    its last point to its first, so values must already be shifted to within a turn of
+    the points.
 
     Returns:
-        Tuple of (lower, upper, fraction), giving the indices of the points
-        below and above each value, and the fraction of the way from the lower
-        to the upper point.
+        Tuple of (lower, upper, fraction), giving the indices of the points below and
+        above each value, and the fraction of the way from the lower to the upper point.
     """
     index = np.arange(len(points))
     if points[0] > points[-1]:
@@ -172,9 +171,9 @@ def _overlaps(
 
     Args:
         source_bounds: (n, 2) bounds of the source cells, which must be monotonic.
-        target_bounds: (m, 2) bounds of the target cells, likewise.
-        period: Period of the axis, e.g. a full turn of longitude, if cells
-            overlap modulo the period.
+        target_bounds: (m, 2) bounds of the target cells, which must be monotonic.
+        period: Period of the axis, e.g. a full turn of longitude, if cells overlap
+            modulo the period.
 
     Returns:
         A sparse matrix with shape (m, n).

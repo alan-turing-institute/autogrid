@@ -49,8 +49,6 @@ source, nearest in degrees) |
 Target points outside the source grid are NaN, and so are any target points computed from NaN or
 masked source values. For the `"linear"` and `"nearest"` methods, target points between the
 outermost source points and the edge of the source cells take the value of the edge cell.
-`regridder.outside(method)` flags the target points that fall outside the source grid for that
-method.
 
 ### Regrid a forecast file from EASE-Grid 2.0 to latitude-longitude
 
