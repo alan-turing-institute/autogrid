@@ -3,7 +3,9 @@ name = "autogrid"
 version = "0.0.1"
 description = "Grid generation and regridding for geospatial data."
 readme = "README.md"
-authors = []
+authors = [
+    { name = "James Robinson", email = "james.em.robinson@gmail.com" },
+]
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
@@ -23,8 +25,8 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "autogrid[plot]",
-    "pytest>=2.1.0",
+    "pytest>=8.0",
     "ruff>=0.13.1",
-    "scitools-iris>=2.4.0",
+    "scitools-iris>=3.8.0",
     "ty>=0.0.2",
 ]

@@ -12,6 +12,15 @@ def globe(crs: CRS) -> ccrs.Globe:
     A datum other than WGS 84 is approximated by its ellipsoid alone, ignoring its
     datum shift. This is typically no more than a few hundred metres, too little to
     see on a map.
+
+    Args:
+        crs: The CRS to convert.
+
+    Returns:
+        The cartopy Globe of the CRS, with WGS 84 datum or the CRS's ellipsoid.
+
+    Raises:
+        ValueError: If the CRS has no ellipsoid.
     """
     datum = crs.datum
     if datum is not None and datum.name.startswith("World Geodetic System 1984"):
@@ -33,7 +42,15 @@ def projection(grid: Grid) -> ccrs.Projection:
     and rotated pole CRSs use cartopy's own classes, which give sensible plot
     limits. Anything else is looked up by EPSG code, or wrapped if it has none.
 
-    Raises ValueError for a CRS whose prime meridian is not Greenwich.
+    Args:
+        grid: The Grid whose CRS to convert.
+
+    Returns:
+        The cartopy projection of the Grid's CRS.
+
+    Raises:
+        ValueError: If the CRS's prime meridian is not Greenwich, or it has no
+            ellipsoid.
     """
     crs = grid.crs
     if (pm := crs.prime_meridian) is not None and pm.longitude != 0:

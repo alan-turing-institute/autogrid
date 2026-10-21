@@ -153,7 +153,20 @@ def gaussian_weighted_mean(
 def check_points(
     name: str, latitudes: ArrayLike, longitudes: ArrayLike
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Return latitudes and longitudes as float arrays, checking they are valid."""
+    """Return latitudes and longitudes as float arrays, checking they are valid.
+
+    Args:
+        name: Name of the points for error messages, e.g. "Source" or "Target".
+        latitudes: Latitude of each point in degrees, of any shape.
+        longitudes: Longitude of each point in degrees, of the same shape.
+
+    Returns:
+        Tuple of the latitudes and longitudes as float64 arrays of the same shape.
+
+    Raises:
+        ValueError: If latitudes and longitudes differ in shape, are empty, or are
+            not all finite.
+    """
     latitudes = np.asarray(latitudes, dtype=np.float64)
     longitudes = np.asarray(longitudes, dtype=np.float64)
     if latitudes.shape != longitudes.shape:

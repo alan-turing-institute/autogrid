@@ -8,14 +8,29 @@ EARTH_RADIUS_KM = 6371.0088
 
 
 def chord_to_km(chord: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Convert straight-line distances between unit vectors to great circle km."""
+    """Convert straight-line distances between unit vectors to great circle km.
+
+    Args:
+        chord: Straight-line distance between points on the unit sphere.
+
+    Returns:
+        Great circle distance between points on the Earth, in km.
+    """
     return 2.0 * EARTH_RADIUS_KM * np.arcsin(np.clip(chord, 0.0, 2.0) / 2.0)
 
 
 def unit_vectors(
     latitudes: NDArray[np.float64], longitudes: NDArray[np.float64]
 ) -> NDArray[np.float64]:
-    """Return the (n, 3) unit sphere position of each point, flattened."""
+    """Compute the (n, 3) unit sphere position of each point, flattened.
+
+    Args:
+        latitudes: Latitude of each point in degrees, of any shape.
+        longitudes: Longitude of each point in degrees, of the same shape.
+
+    Returns:
+        Array of shape (n, 3) with the unit sphere positions of the points.
+    """
     lat, lon = np.deg2rad(latitudes).ravel(), np.deg2rad(longitudes).ravel()
     return np.stack(
         [np.cos(lat) * np.cos(lon), np.cos(lat) * np.sin(lon), np.sin(lat)], axis=-1

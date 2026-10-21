@@ -27,6 +27,12 @@ class Grid:
     Only some CRSs are supported: latitude-longitude and rotated pole CRSs in degrees,
     and projected CRSs in metres, on any datum. Reproject coordinates in any other CRS
     into one of these first. Longitudes and latitudes are always on WGS 84.
+
+    Attributes:
+        crs: The CRS of the grid.
+        name: Optional label for display.
+        x_points: Read-only 1D array of x coordinates of grid points.
+        y_points: Read-only 1D array of y coordinates of grid points.
     """
 
     def __init__(
@@ -59,6 +65,7 @@ class Grid:
         self.y_points = check_axis_points(y_points, "y")
 
     def __eq__(self, other: object) -> bool:
+        """Whether two Grids have the same CRS and points, ignoring their names."""
         if not isinstance(other, Grid):
             return NotImplemented
         return (
@@ -68,6 +75,7 @@ class Grid:
         )
 
     def __repr__(self) -> str:
+        """Return a string representation of the Grid."""
         name = f"name={self.name!r}, " if self.name is not None else ""
         return (
             f"{type(self).__name__}({name}shape={self.shape}, "
@@ -177,11 +185,16 @@ class Grid:
         2D latitude/longitude arrays of a data file.
 
         Args:
-            latitudes: 2D (ny, nx) array of the latitude of each grid point.
-            longitudes: 2D (ny, nx) array of the longitude of each grid point.
+            latitudes: 2D (ny, nx) array of the latitude of each grid point in
+                degrees.
+            longitudes: 2D (ny, nx) array of the longitude of each grid point in
+                degrees.
             crs: The CRS in which the grid is rectilinear, as for Grid.
             tolerance: Largest allowed distance between a projected point and
                 the recovered grid lines, as a fraction of the grid spacing.
+
+        Returns:
+            The grid, with the mean x of each column and y of each row as its points.
 
         Raises:
             ValueError: If the CRS is not supported, the arrays are not 2D with

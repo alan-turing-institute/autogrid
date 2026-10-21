@@ -57,6 +57,9 @@ def build_ease2(
             grid so that cells align with the official grid. Defaults to
             the full grid.
 
+    Returns:
+        The grid, in metres in the region's EASE-Grid 2.0 CRS.
+
     Raises:
         ValueError: If the region or resolution is unknown, or the shape is
             not a non-empty centred subset of the full grid.

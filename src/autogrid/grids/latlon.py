@@ -13,6 +13,9 @@ def build_global_latlon(resolution: float) -> Grid:
     Args:
         resolution: Cell size in degrees. Must divide 180 exactly.
 
+    Returns:
+        The grid, with shape (180 / resolution, 360 / resolution).
+
     Raises:
         ValueError: If the resolution is not in (0, 180) degrees, or does
             not divide 180 degrees exactly.

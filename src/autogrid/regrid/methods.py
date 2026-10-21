@@ -37,6 +37,14 @@ def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
     cells that the source cells do not wholly cover are outside, and overlaps with less
     than MIN_OVERLAP_FRACTION of a target cell are ignored.
 
+    Args:
+        source: Grid the input arrays are on.
+        target: Grid to regrid onto.
+
+    Returns:
+        A sparse matrix with shape (target.size, source.size) giving the weight of each
+        source point in each target point.
+
     Raises:
         ValueError: If the grids do not share a CRS.
     """
@@ -68,6 +76,14 @@ def linear(source: Grid, target: Grid) -> sparse.csr_array:
 
     Target points between the outermost source points and the edge of the source cells
     take the value of the edge cell.
+
+    Args:
+        source: Grid the input arrays are on.
+        target: Grid to regrid onto.
+
+    Returns:
+        A sparse matrix with shape (target.size, source.size) giving the weight of each
+        source point in each target point.
     """
     rows, y, x, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
@@ -86,6 +102,14 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
     """Nearest source point in the source grid's own coordinates.
 
     Ties go to the source point with the lower coordinate, as in iris.
+
+    Args:
+        source: Grid the input arrays are on.
+        target: Grid to regrid onto.
+
+    Returns:
+        A sparse matrix with shape (target.size, source.size) giving the weight of each
+        source point in each target point.
     """
     rows, y, x, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
@@ -100,7 +124,16 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
 def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
     """Nearest source point along the Earth's surface, from points.nearest_indices.
 
-    Target points are outside as for linear, in the source CRS.
+    As for linear, target points outside the source cells in the source CRS get no
+    weights.
+
+    Args:
+        source: Grid the input arrays are on.
+        target: Grid to regrid onto.
+
+    Returns:
+        A sparse matrix with shape (target.size, source.size) giving the weight of each
+        source point in each target point.
     """
     rows, _, _, flat_target_lats, flat_target_lons = _find_target_points(source, target)
     if not len(rows):
@@ -131,6 +164,11 @@ def _bracket(
     its last point to its first, so values must already be shifted to within a turn of
     the points.
 
+    Args:
+        points: 1D array of the points along the axis.
+        values: Coordinates along the axis to bracket, of any shape.
+        circular: Whether the axis is circular, e.g. longitude.
+
     Returns:
         Tuple of (lower, upper, fraction), giving the indices of the points below and
         above each value, and the fraction of the way from the lower to the upper point.
@@ -159,6 +197,10 @@ def _find_target_points(
 ]:
     """Find the target points inside the source cells, in the source CRS.
 
+    Args:
+        source: Grid the input arrays are on.
+        target: Grid to regrid onto.
+
     Returns:
         Tuple of the flat target index of each point inside, its y and x in the source
         CRS, with x shifted by whole turns to match the source cells, and its latitude
@@ -184,7 +226,8 @@ def _overlaps(
             modulo the period.
 
     Returns:
-        A sparse matrix with shape (m, n).
+        A sparse matrix with shape (m, n) giving the fraction of each target cell
+        covered by each source cell.
     """
     s_lo, s_hi = np.sort(source_bounds, axis=1).T
     t_lo, t_hi = np.sort(target_bounds, axis=1).T

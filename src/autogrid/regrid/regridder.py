@@ -13,6 +13,13 @@ class Regridder:
 
     Build one Regridder per (source, target, method) and apply it to each field. The
     weights are built when the Regridder is created.
+
+    Attributes:
+        source: Grid the input arrays are on.
+        target: Grid the output arrays are on.
+        method: Function that built the weights.
+        weights: Sparse matrix with shape (target.size, source.size) giving the weight
+            of each source point in each target point, with no explicit zeros.
     """
 
     def __init__(
@@ -23,10 +30,9 @@ class Regridder:
         Args:
             source: Grid the input arrays are on.
             target: Grid to regrid onto.
-            method: The name of a method in autogrid.regrid.methods.METHODS ("linear",
-                "nearest", "nearest_great_circle" or "area_weighted"), or a function
-                building the weights from the source and target grids, following the
-                rules in autogrid.regrid.methods.
+            method: The name of a method in autogrid.regrid.methods, as listed by
+                Method, or a function building the weights from the source and target
+                grids, following the rules in autogrid.regrid.methods.
 
         Raises:
             ValueError: If the method is unknown, its weights have the wrong shape, or
@@ -56,6 +62,7 @@ class Regridder:
         self._empty = np.diff(weights.indptr) == 0
 
     def __repr__(self) -> str:
+        """Return a string representation of the Regridder."""
         name = getattr(self.method, "__name__", repr(self.method))
         return f"{type(self).__name__}({self.source!r} -> {self.target!r}, {name})"
 

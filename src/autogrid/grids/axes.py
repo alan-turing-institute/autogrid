@@ -9,6 +9,17 @@ def check_axis_points(points: ArrayLike, axis: str) -> NDArray[np.float64]:
     """Return the points as a new read-only float64 array, checking they define an axis.
 
     The array is read-only so that bounds cached from it cannot go stale.
+
+    Args:
+        points: Coordinates of the points along the axis.
+        axis: Name of the axis for error messages, e.g. "x".
+
+    Returns:
+        The points as a read-only 1D float64 array.
+
+    Raises:
+        ValueError: If the points are not 1D, have fewer than two points, contain
+            non-finite values or are not strictly monotonic.
     """
     points = np.array(points, dtype=np.float64)
     if points.ndim != 1 or len(points) < 2:
@@ -32,6 +43,12 @@ def guess_bounds(points: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return (n, 2) cell bounds halfway between neighbouring points.
 
     The outer bounds are half a spacing beyond the first and last points.
+
+    Args:
+        points: 1D array of the points along an axis.
+
+    Returns:
+        2D array of the bounds of each cell along the axis, with shape (n, 2).
     """
     first, last = 2 * points[0] - points[1], 2 * points[-1] - points[-2]
     padded = np.concatenate([[first], points, [last]])

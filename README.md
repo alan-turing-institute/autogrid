@@ -1,9 +1,9 @@
 # autogrid
 
-Regrid geophysical fields between latitude-longitude and projected grids, such as EASE-Grid 2.0 and
+Regrid geophysical fields between latitude-longitude and projected grids, such as EASE-Grid 2.0, and
 between scattered points, using great circle distances where it matters.
 
-- `Grid`: a rectilinear grid of points in any CRS, with its latitudes and longitudes.
+- `Grid`: a rectilinear grid of points in a latitude-longitude, rotated pole or projected CRS.
 - `Regridder`: regrid arrays from one `Grid` to another with one method, reusing the weights.
 - `grid_to_points`: sample a `Grid` at a set of points
 - `points_to_grid`: project a set of scattered points onto a `Grid`
@@ -62,8 +62,7 @@ The available methods are:
 | Method | Description |
 |---|---|
 | `"linear"` | Bilinear interpolation in the source grid's own coordinates |
-| `"nearest"` | Nearest source point in the source grid's own coordinates (for a latitude-longitude
-source, nearest in degrees) |
+| `"nearest"` | Nearest source point in the source grid's own coordinates (in degrees for a latitude-longitude source) |
 | `"nearest_great_circle"` | Nearest source point along the Earth's surface |
 | `"area_weighted"` | Weighted area-overlap regridding, for grids that share a CRS |
 
@@ -131,9 +130,9 @@ gridded = points_to_grid(
 )
 ```
 
-Every observation contributes to every target point, so target points far from all observations
-take the values of the nearest ones, however far away they are. Only NaN marks missing
-observations, so fill a masked array with `.filled(np.nan)` first.
+Every observation contributes to every target point, so target points far from all observations take
+the values of the nearest ones, however far away they are. Only NaN marks missing observations, so
+fill a masked array with `.filled(np.nan)` first.
 
 ### Convert data between sets of points
 

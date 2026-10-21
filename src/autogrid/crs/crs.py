@@ -43,6 +43,13 @@ MAX_LONGITUDE = 180.0
 def supported_crs(crs: CRSLike) -> CRS:
     """Return a CRS as a pyproj CRS, checking that Grids support it.
 
+    Args:
+        crs: The CRS to check, as anything pyproj.CRS.from_user_input accepts, e.g.
+            "EPSG:6931", 6931 or a pyproj CRS.
+
+    Returns:
+        The CRS as a pyproj CRS.
+
     Raises:
         ValueError: If the CRS is not a 2D latitude-longitude or rotated pole CRS
             in degrees, or projected CRS in metres.
@@ -72,11 +79,25 @@ def supported_crs(crs: CRSLike) -> CRS:
 
 @functools.cache
 def trf_from_lonlat(crs: CRS) -> Transformer:
-    """Return a transformer from WGS 84 longitude and latitude to a CRS's x and y."""
+    """Return a transformer from WGS 84 longitude and latitude to a CRS's x and y.
+
+    Args:
+        crs: The CRS to convert to.
+
+    Returns:
+        A pyproj Transformer that takes (longitude, latitude) and returns (x, y).
+    """
     return Transformer.from_crs(LONLAT_CRS, crs, always_xy=True)
 
 
 @functools.cache
 def trf_to_lonlat(crs: CRS) -> Transformer:
-    """Return a transformer from a CRS's x and y to WGS 84 longitude and latitude."""
+    """Return a transformer from a CRS's x and y to WGS 84 longitude and latitude.
+
+    Args:
+        crs: The CRS to convert from.
+
+    Returns:
+        A pyproj Transformer that takes (x, y) and returns (longitude, latitude).
+    """
     return Transformer.from_crs(crs, LONLAT_CRS, always_xy=True)

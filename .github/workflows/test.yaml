@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-          cache-suffix: release
+          cache-suffix: test
           activate-environment: true
 
       - name: Test with pytest

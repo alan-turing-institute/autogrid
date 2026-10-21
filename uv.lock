@@ -46,9 +46,9 @@ provides-extras = ["plot"]
 [package.metadata.requires-dev]
 dev = [
     { name = "autogrid", extras = ["plot"] },
-    { name = "pytest", specifier = ">=2.1.0" },
+    { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.13.1" },
-    { name = "scitools-iris", specifier = ">=2.4.0" },
+    { name = "scitools-iris", specifier = ">=3.8.0" },
     { name = "ty", specifier = ">=0.0.2" },
 ]
 
