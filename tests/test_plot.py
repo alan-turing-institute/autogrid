@@ -39,6 +39,18 @@ def test_sphere_projection_keeps_radius() -> None:
     assert globe.semimajor_axis == globe.semiminor_axis == 6371229
 
 
+def test_epsg_projection_has_plot_limits() -> None:
+    # NSIDC Sea Ice Polar Stereographic North
+    x_min, x_max = projection(Grid([0.0, 1.0], [0.0, 1.0], "EPSG:3413")).x_limits
+    assert x_max > x_min
+
+
+def test_projection_without_epsg_code_is_rejected() -> None:
+    crs = "+proj=stere +lat_0=90 +lon_0=-44 +lat_ts=71 +datum=WGS84 +units=m"
+    with pytest.raises(ValueError, match="no EPSG code"):
+        projection(Grid([0.0, 1.0], [0.0, 1.0], crs))
+
+
 @pytest.mark.parametrize(
     "crs",
     [

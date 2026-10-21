@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 plot = [
     "cartopy>=0.26.0",
+    "matplotlib>=3.10.0",
 ]
 
 [build-system]

@@ -10,8 +10,8 @@ from scipy.spatial import KDTree
 
 from autogrid.points._geometry import chord_to_km, unit_vectors
 
-# Largest number of (target, source) weights held in memory at once by
-# gaussian_weighted_mean
+# Largest number of (target, source) pairs in each block of gaussian_weighted_mean.
+# Each block holds several float64 arrays of this size at once, about 1 GB in all.
 _CHUNK_ELEMENTS = 2**24
 
 

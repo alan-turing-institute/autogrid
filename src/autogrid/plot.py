@@ -40,7 +40,7 @@ def projection(grid: Grid) -> ccrs.Projection:
 
     Latitude-longitude, Lambert azimuthal equal area (as used by EASE-Grid 2.0)
     and rotated pole CRSs use cartopy's own classes, which give sensible plot
-    limits. Anything else is looked up by EPSG code, or wrapped if it has none.
+    limits. Anything else is looked up by EPSG code.
 
     Args:
         grid: The Grid whose CRS to convert.
@@ -49,8 +49,8 @@ def projection(grid: Grid) -> ccrs.Projection:
         The cartopy projection of the Grid's CRS.
 
     Raises:
-        ValueError: If the CRS's prime meridian is not Greenwich, or it has no
-            ellipsoid.
+        ValueError: If the CRS's prime meridian is not Greenwich, it has no
+            ellipsoid, or it is none of the CRSs above and has no EPSG code.
     """
     crs = grid.crs
     if (pm := crs.prime_meridian) is not None and pm.longitude != 0:
@@ -75,6 +75,8 @@ def projection(grid: Grid) -> ccrs.Projection:
                 central_rotated_longitude=cf.get("north_pole_grid_longitude", 0.0),
                 globe=globe(crs),
             )
-    if (epsg := crs.to_epsg()) is not None:
-        return ccrs.epsg(epsg)
-    return ccrs.Projection(crs)
+    if (epsg := crs.to_epsg()) is None:
+        # A cartopy Projection built from a bare CRS has no plot limits
+        msg = f"CRS {crs.name!r} has no EPSG code, so has no cartopy projection."
+        raise ValueError(msg)
+    return ccrs.epsg(epsg)
