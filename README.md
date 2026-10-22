@@ -4,19 +4,21 @@ Regrid geophysical fields between latitude-longitude and projected grids, such a
 between scattered points, using great circle distances where it matters.
 
 - `Grid`: a rectilinear grid of points in a latitude-longitude, rotated pole or projected CRS.
-- `Regridder`: regrid arrays from one `Grid` to another with one method, reusing the weights.
-- `grid_to_points`: sample a `Grid` at a set of points
-- `points_to_grid`: project a set of scattered points onto a `Grid`
+- `Points`: points of any shape, known only by their latitudes and longitudes.
+- `Regridder`: regrid arrays between `Grid`s and `Points` with one method, reusing the weights.
+- `grid_to_points`: sample a `Grid` at a set of points.
+- `points_to_grid`: project a set of scattered points onto a `Grid`.
 
 ## Which function?
 
 | From \ To | `Grid` | Points |
 |---|---|---|
-| **`Grid`** | `Regridder` | `grid_to_points` |
-| **Points** | `points_to_grid` | `autogrid.points.nearest_indices` or `autogrid.points.gaussian_weighted_mean` |
+| **`Grid`** | `Regridder` | `Regridder` or `grid_to_points` |
+| **Points** | `Regridder` with `"nearest_great_circle"`, or `points_to_grid` | `Regridder` with `"nearest_great_circle"`, `autogrid.points.nearest_indices` or `autogrid.points.gaussian_weighted_mean` |
 
-Points are latitudes and longitudes of any shape, such as observation sites or an anemoi dataset's
-flat list of points.
+Points are latitudes and longitudes of any shape, such as observation sites, an anemoi dataset's
+flat list of points or the 2D points of a curvilinear grid. Wrap them in `Points` to use them with
+a `Regridder`, which caches the weights for applying to many fields.
 
 ## Example workflows
 
@@ -66,12 +68,17 @@ The available methods are:
 | `"nearest_great_circle"` | Nearest source point along the Earth's surface |
 | `"area_weighted"` | Weighted area-overlap regridding, for grids that share a CRS |
 
+The source and target can each be a `Grid` or `Points`. `"nearest_great_circle"` takes any
+source; the other methods need a `Grid` source, and `"area_weighted"` a `Grid` target too.
+
 `method` can also be a function `(source, target) -> scipy.sparse.csr_array` that builds your own
-weights, with shape `(target.size, source.size)`. See `autogrid.regrid.methods` for the rules the
+weights, with shape `(target.size, source.size)`. Its arguments are typed `autogrid.Locations`, the
+protocol that both `Grid` and `Points` satisfy. See `autogrid.regrid.methods` for the rules the
 weights must follow.
 
-Target points outside the source grid are NaN, and so are any target points computed from NaN
-source values. Only NaN marks missing values, so fill a masked array with `.filled(np.nan)` first.
+For a `Grid` source, target points outside the source grid's cells are NaN. A `Points` source has
+no cells, so every target point takes a value. Either way, target points computed from NaN source
+values are NaN. Only NaN marks missing values, so fill a masked array with `.filled(np.nan)` first.
 For the `"linear"` and `"nearest"` methods, target points between the outermost source points and
 the edge of the source cells take the value of the edge cell.
 
@@ -83,7 +90,7 @@ site. It wraps `autogrid.points.nearest_indices`.
 ```python
 import numpy as np
 
-from autogrid import grid_to_points
+from autogrid import Points, grid_to_points
 from autogrid.grids import build_ease2
 
 grid = build_ease2("north", "25p0km", shape=(432, 432))
@@ -93,14 +100,22 @@ forecast = np.stack([np.cos(np.deg2rad(4 * (90 - latitudes)))] * 3)  # (time, ny
 rng = np.random.default_rng(0)
 station_lats = rng.uniform(60, 90, 50)
 station_lons = rng.uniform(-180, 180, 50)
-# Shape (3, 50)
-at_stations = grid_to_points(
-    grid, forecast, target_lats=station_lats, target_lons=station_lons
-)
+stations = Points(station_lats, station_lons, name="stations")
+at_stations = grid_to_points(forecast, grid=grid, points=stations)  # shape (3, 50)
 ```
 
 Every site takes its nearest grid point, however far away it is, so sites outside the grid are
 not masked.
+
+To sample many forecasts at the same sites, build a `Regridder` once and reuse its weights. Any
+method with a `Grid` source works, and sites outside the grid's cells are NaN.
+
+```python
+from autogrid import Regridder
+
+regridder = Regridder(grid, stations, method="nearest_great_circle")
+at_stations = regridder.apply(forecast)  # shape (3, 50)
+```
 
 ### Grid scattered observations
 
@@ -112,7 +127,7 @@ which takes target latitudes and longitudes of any shape instead of a `Grid`.
 ```python
 import numpy as np
 
-from autogrid import points_to_grid
+from autogrid import Points, points_to_grid
 from autogrid.grids import build_ease2
 
 rng = np.random.default_rng(0)
@@ -122,11 +137,10 @@ obs_temperature = rng.normal(0, 1, 500)
 
 target = build_ease2("north", "25p0km", shape=(432, 432))
 gridded = points_to_grid(
-    target,
-    source_lats=obs_lats,
-    source_lons=obs_lons,
-    data=obs_temperature,
+    obs_temperature,
     distance_scale_km=200,
+    grid=target,
+    points=Points(obs_lats, obs_lons, name="observations"),
 )
 ```
 
@@ -137,7 +151,8 @@ fill a masked array with `.filled(np.nan)` first.
 ### Convert data between sets of points
 
 `nearest_indices` needs only latitudes and longitudes, of any shape. Compute the indices once, then
-apply them to any number of fields.
+apply them to any number of fields. `Regridder(Points(...), Points(...), "nearest_great_circle")`
+gives the same result as a reusable `Regridder`.
 
 ```python
 import numpy as np

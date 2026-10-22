@@ -1,6 +1,6 @@
-"""Regridding between Grids.
+"""Regridding between Grids and Points.
 
-- regridder: Regridder, for converting arrays from one Grid to another.
+- regridder: Regridder, for converting arrays from one set of Locations to another.
 - methods: the regridding methods a Regridder can apply.
 """
 

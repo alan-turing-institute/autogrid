@@ -1,40 +1,47 @@
-"""Regrid numpy arrays between Grids with sparse weight matrices."""
+"""Regrid numpy arrays between Grids or Points with sparse weight matrices."""
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy import sparse
 
-from autogrid.grids import Grid
+from autogrid.locations import Locations
 from autogrid.regrid.methods import METHODS, Method, WeightsFunction
 
 
 class Regridder:
-    """Regrid arrays from one Grid to another with one method, reusing the weights.
+    """Regrid arrays from one set of Locations to another, reusing the weights.
 
-    Build one Regridder per (source, target, method) and apply it to each field. The
-    weights are built when the Regridder is created.
+    The source and target are each a Grid or Points, e.g. observation sites or an anemoi
+    dataset's flat list of points. Build one Regridder per (source, target, method) and
+    apply it to each field. The weights are built when the Regridder is created.
 
     Attributes:
-        source: Grid the input arrays are on.
-        target: Grid the output arrays are on.
+        source: Locations the input arrays are on.
+        target: Locations the output arrays are on.
         method: Function that built the weights.
         weights: Sparse matrix with shape (target.size, source.size) giving the weight
             of each source point in each target point, with no explicit zeros.
     """
 
     def __init__(
-        self, source: Grid, target: Grid, method: Method | WeightsFunction = "linear"
+        self,
+        source: Locations,
+        target: Locations,
+        method: Method | WeightsFunction = "linear",
     ) -> None:
         """Initialise a Regridder and build its weights.
 
         Args:
-            source: Grid the input arrays are on.
-            target: Grid to regrid onto.
+            source: Locations the input arrays are on, e.g. a Grid or Points.
+            target: Locations to regrid onto, e.g. a Grid or Points.
             method: The name of a method in autogrid.regrid.methods, as listed by
-                Method, or a function building the weights from the source and target
-                grids, following the rules in autogrid.regrid.methods.
+                Method, or a function building the weights from the source and target,
+                following the rules in autogrid.regrid.methods. Only
+                "nearest_great_circle" takes a source that is not a Grid.
 
         Raises:
+            TypeError: If the method needs a Grid source or target but got other
+                Locations.
             ValueError: If the method is unknown, its weights have the wrong shape, or
                 the method rejects the grids, e.g. area weighting grids that do not
                 share a coordinate system.
@@ -67,24 +74,26 @@ class Regridder:
         return f"{type(self).__name__}({self.source!r} -> {self.target!r}, {name})"
 
     def apply(self, data: ArrayLike) -> NDArray[np.floating]:
-        """Regrid an array with shape (..., ny, nx) on the source grid.
+        """Regrid an array whose trailing dimensions match the source shape.
 
         Args:
-            data: Array whose last two dimensions match the source grid shape.
+            data: Array whose trailing dimensions match the source shape, e.g.
+                (..., ny, nx) on a Grid or (..., n) on 1D Points.
 
         Returns:
-            An array with shape (..., ny, nx) on the target grid. Target points outside
-            the source grid, or derived from NaN or infinite source points, are NaN.
-            Only NaN marks missing values, so fill a masked array with
+            An array with the leading dimensions of data followed by the target shape.
+            Target points outside the source, or derived from NaN or infinite source
+            points, are NaN. Only NaN marks missing values, so fill a masked array with
             data.filled(np.nan) first.
 
         Raises:
-            ValueError: If the data shape does not end with the source grid shape.
+            ValueError: If the data shape does not end with the source shape.
         """
         data = np.asarray(data)
-        if data.shape[-2:] != self.source.shape:
+        n_leading = data.ndim - len(self.source.shape)
+        if n_leading < 0 or data.shape[n_leading:] != self.source.shape:
             msg = (
-                f"Data shape {data.shape} does not end with the source grid shape "
+                f"Data shape {data.shape} does not end with the source shape "
                 f"{self.source.shape}."
             )
             raise ValueError(msg)
@@ -99,4 +108,4 @@ class Regridder:
         # Set result to NaN for any target points with no contributing source points
         result[:, self._empty] = np.nan
         dtype = np.result_type(data.dtype, np.float32)
-        return result.astype(dtype).reshape(*data.shape[:-2], *self.target.shape)
+        return result.astype(dtype).reshape(*data.shape[:n_leading], *self.target.shape)

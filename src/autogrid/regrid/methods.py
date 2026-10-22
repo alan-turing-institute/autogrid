@@ -1,8 +1,10 @@
-"""Regridding methods, each building the weights from one Grid to another.
+"""Regridding methods, each building the weights from one set of Locations to another.
 
-A method returns a sparse matrix with shape (target size, source size), whose rows give
+Sources and targets are Locations: Grids, or Points of any shape. Methods that rely on
+the rectilinear structure of a Grid raise a TypeError for other Locations. A method
+returns a sparse matrix with shape (target size, source size), whose rows give
 the weight of each source point in each target point, both flattened. Target points
-outside the source grid have empty rows. The Regridder drops explicitly zero weights, so
+outside the source cells of a Grid source have empty rows. The Regridder drops explicitly zero weights, so
 that only the source points that contribute to a target point can make it NaN, and a
 method need not drop them itself.
 
@@ -19,18 +21,19 @@ from scipy import sparse
 
 from autogrid.crs import FULL_TURN, MAX_LATITUDE
 from autogrid.grids import Grid
+from autogrid.locations import Locations
 from autogrid.points import nearest_indices
 
 Method = Literal["linear", "nearest", "nearest_great_circle", "area_weighted"]
 
-# Builds the regridding weights from a source Grid to a target Grid
-WeightsFunction = Callable[[Grid, Grid], sparse.csr_array]
+# Builds the regridding weights from source Locations to target Locations
+WeightsFunction = Callable[[Locations, Locations], sparse.csr_array]
 
 # Fraction of a target cell below which area weighting ignores an overlap
 MIN_OVERLAP_FRACTION = 1e-8
 
 
-def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
+def area_weighted(source: Locations, target: Locations) -> sparse.csr_array:
     """Mean of the source cells over each target cell, weighted by their overlap.
 
     Cell areas are measured in the shared CRS, on a sphere for a geographic CRS. Target
@@ -46,8 +49,11 @@ def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
         source point in each target point.
 
     Raises:
+        TypeError: If the source or target is not a Grid.
         ValueError: If the grids do not share a CRS.
     """
+    source = _require_grid(source, "area_weighted", "source")
+    target = _require_grid(target, "area_weighted", "target")
     if not source.crs.equals(target.crs, ignore_axis_order=True):
         msg = (
             "Area weighted regridding requires both grids to share a CRS, but got "
@@ -71,7 +77,7 @@ def area_weighted(source: Grid, target: Grid) -> sparse.csr_array:
     return weights
 
 
-def linear(source: Grid, target: Grid) -> sparse.csr_array:
+def linear(source: Locations, target: Locations) -> sparse.csr_array:
     """Bilinear interpolation in the source grid's own coordinates.
 
     Target points between the outermost source points and the edge of the source cells
@@ -79,12 +85,16 @@ def linear(source: Grid, target: Grid) -> sparse.csr_array:
 
     Args:
         source: Grid the input arrays are on.
-        target: Grid to regrid onto.
+        target: Locations to regrid onto.
 
     Returns:
         A sparse matrix with shape (target.size, source.size) giving the weight of each
         source point in each target point.
+
+    Raises:
+        TypeError: If the source is not a Grid.
     """
+    source = _require_grid(source, "linear", "source")
     rows, y, x, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
     y0, y1, fy = _bracket(source.y_points, y)
@@ -98,19 +108,23 @@ def linear(source: Grid, target: Grid) -> sparse.csr_array:
     )
 
 
-def nearest(source: Grid, target: Grid) -> sparse.csr_array:
+def nearest(source: Locations, target: Locations) -> sparse.csr_array:
     """Nearest source point in the source grid's own coordinates.
 
     Ties go to the source point with the lower coordinate, as in iris.
 
     Args:
         source: Grid the input arrays are on.
-        target: Grid to regrid onto.
+        target: Locations to regrid onto.
 
     Returns:
         A sparse matrix with shape (target.size, source.size) giving the weight of each
         source point in each target point.
+
+    Raises:
+        TypeError: If the source is not a Grid.
     """
+    source = _require_grid(source, "nearest", "source")
     rows, y, x, _, _ = _find_target_points(source, target)
     x0, x1, fx = _bracket(source.x_points, x, circular=source.is_circular)
     y0, y1, fy = _bracket(source.y_points, y)
@@ -121,21 +135,30 @@ def nearest(source: Grid, target: Grid) -> sparse.csr_array:
     )
 
 
-def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
+def nearest_great_circle(source: Locations, target: Locations) -> sparse.csr_array:
     """Nearest source point along the Earth's surface, from points.nearest_indices.
 
-    As for linear, target points outside the source cells in the source CRS get no
-    weights.
+    For a Grid source, as for linear, target points outside the source cells in the
+    source CRS get no weights. Other sources have no cells, so every target point takes
+    its nearest source point, however far away. Either way, target points without a
+    latitude or longitude get no weights.
 
     Args:
-        source: Grid the input arrays are on.
-        target: Grid to regrid onto.
+        source: Locations the input arrays are on.
+        target: Locations to regrid onto.
 
     Returns:
         A sparse matrix with shape (target.size, source.size) giving the weight of each
         source point in each target point.
     """
-    rows, _, _, flat_target_lats, flat_target_lons = _find_target_points(source, target)
+    if isinstance(source, Grid):
+        rows, _, _, flat_target_lats, flat_target_lons = _find_target_points(
+            source, target
+        )
+    else:
+        flat_lats, flat_lons = (coords.ravel() for coords in target.latlon())
+        rows = np.flatnonzero(np.isfinite(flat_lats) & np.isfinite(flat_lons))
+        flat_target_lats, flat_target_lons = flat_lats[rows], flat_lons[rows]
     if not len(rows):
         return sparse.csr_array((target.size, source.size))
     flat_source_lats, flat_source_lons = (coords.ravel() for coords in source.latlon())
@@ -153,6 +176,29 @@ def nearest_great_circle(source: Grid, target: Grid) -> sparse.csr_array:
         (np.ones(len(rows)), (rows, flat_source_indices[nearest])),
         shape=(target.size, source.size),
     )
+
+
+def _require_grid(locations: Locations, method: str, role: str) -> Grid:
+    """Return the locations as a Grid, for methods that need one.
+
+    Args:
+        locations: Source or target of a regridding method.
+        method: Name of the method, for the error message.
+        role: "source" or "target", for the error message.
+
+    Returns:
+        The locations, as a Grid.
+
+    Raises:
+        TypeError: If the locations are not a Grid.
+    """
+    if not isinstance(locations, Grid):
+        msg = (
+            f"The {method!r} method needs a Grid {role}, but got {locations!r}. Use "
+            '"nearest_great_circle" for other Locations.'
+        )
+        raise TypeError(msg)
+    return locations
 
 
 def _bracket(
@@ -187,7 +233,7 @@ def _bracket(
 
 
 def _find_target_points(
-    source: Grid, target: Grid
+    source: Grid, target: Locations
 ) -> tuple[
     NDArray[np.intp],
     NDArray[np.float64],
@@ -199,7 +245,7 @@ def _find_target_points(
 
     Args:
         source: Grid the input arrays are on.
-        target: Grid to regrid onto.
+        target: Locations to regrid onto.
 
     Returns:
         Tuple of the flat target index of each point inside, its y and x in the source

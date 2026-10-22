@@ -8,7 +8,8 @@ from scipy import sparse
 import autogrid.regrid.methods
 from autogrid import Grid, Regridder, grid_to_points
 from autogrid.grids import build_ease2, build_global_latlon
-from autogrid.points import nearest_indices
+from autogrid.locations import Locations
+from autogrid.points import Points, nearest_indices
 from autogrid.regrid.methods import METHODS, Method
 
 
@@ -125,7 +126,7 @@ def test_nan_input_propagates(latlon: Grid, south: Grid) -> None:
 
 
 def test_rejects_wrong_shape(latlon: Grid, south: Grid) -> None:
-    with pytest.raises(ValueError, match="does not end with the source grid shape"):
+    with pytest.raises(ValueError, match="does not end with the source shape"):
         Regridder(latlon, south).apply(np.ones((10, 10)))
 
 
@@ -135,7 +136,9 @@ def test_rejects_unknown_method(latlon: Grid, south: Grid) -> None:
 
 
 def test_accepts_weights_function(latlon: Grid, south: Grid) -> None:
-    def mean_of_linear_and_nearest(source: Grid, target: Grid) -> sparse.csr_array:
+    def mean_of_linear_and_nearest(
+        source: Locations, target: Locations
+    ) -> sparse.csr_array:
         return (
             METHODS["linear"](source, target) + METHODS["nearest"](source, target)
         ) / 2
@@ -148,7 +151,9 @@ def test_accepts_weights_function(latlon: Grid, south: Grid) -> None:
 
 
 def test_weights_function_explicit_zeros_leave_outside_points_nan(south: Grid) -> None:
-    def nearest_with_explicit_zeros(source: Grid, target: Grid) -> sparse.csr_array:
+    def nearest_with_explicit_zeros(
+        source: Locations, target: Locations
+    ) -> sparse.csr_array:
         # Add an explicit zero weight from the first source point to every target
         coo = METHODS["nearest"](source, target).tocoo()
         rows = np.concatenate([coo.row, np.arange(target.size)])
@@ -164,7 +169,7 @@ def test_weights_function_explicit_zeros_leave_outside_points_nan(south: Grid) -
 
 
 def test_rejects_weights_function_with_wrong_shape(latlon: Grid, south: Grid) -> None:
-    def wrong_shape(source: Grid, target: Grid) -> sparse.csr_array:
+    def wrong_shape(source: Locations, target: Locations) -> sparse.csr_array:
         return sparse.csr_array((source.size, target.size))
 
     with pytest.raises(ValueError, match="should have shape"):
@@ -246,7 +251,7 @@ def test_nearest_great_circle_skips_sources_without_latlon() -> None:
     regridder = Regridder(source, target, "nearest_great_circle")
     data = np.random.default_rng(0).random(source.shape)
     lat, lon = target.latlon()
-    expected = grid_to_points(source, data, target_lats=lat, target_lons=lon)
+    expected = grid_to_points(data, grid=source, points=Points(lat, lon))
     inside = ~outside(regridder)
     assert inside.any()
     np.testing.assert_array_equal(regridder.apply(data)[inside], expected[inside])
@@ -348,3 +353,103 @@ def test_area_weighted_wraps_longitude() -> None:
 def test_area_weighted_rejects_different_crs(latlon: Grid, south: Grid) -> None:
     with pytest.raises(ValueError, match="share a CRS"):
         Regridder(latlon, south, "area_weighted")
+
+
+def _random_points(n: int, seed: int = 0) -> Points:
+    rng = np.random.default_rng(seed)
+    return Points(
+        np.rad2deg(np.arcsin(rng.uniform(-1, 1, n))), rng.uniform(-180, 180, n)
+    )
+
+
+def test_grid_is_locations(latlon: Grid) -> None:
+    locations: Locations = latlon
+    assert locations.shape == latlon.shape
+
+
+def test_grid_to_points_regridder_matches_grid_to_points(latlon: Grid) -> None:
+    targets = _random_points(50)
+    regridder = Regridder(latlon, targets, "nearest_great_circle")
+    data = np.random.default_rng(1).random((3, *latlon.shape))
+    lats, lons = targets.latlon()
+    expected = grid_to_points(data, grid=latlon, points=Points(lats, lons))
+    result = regridder.apply(data)
+    assert result.shape == (3, 50)
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_grid_to_points_regridder_masks_points_outside_grid() -> None:
+    regional = Grid(np.arange(-60.5, 0, 1.0), np.arange(-89.5, -40, 1.0), "EPSG:4326")
+    targets = Points([-60.0, 10.0], [-30.0, 100.0])
+    result = Regridder(regional, targets, "nearest_great_circle").apply(
+        np.ones(regional.shape)
+    )
+    np.testing.assert_array_equal(result, [1.0, np.nan])
+
+
+@pytest.mark.parametrize("method", ["linear", "nearest"])
+def test_grid_to_points_matches_grid_to_grid(
+    latlon: Grid, south: Grid, method: Method
+) -> None:
+    # Regridding to the points of a grid gives the same values, flattened
+    lats, lons = south.latlon()
+    data = analytic(latlon)
+    result = Regridder(latlon, Points(lats.ravel(), lons.ravel()), method).apply(data)
+    expected = Regridder(latlon, south, method).apply(data)
+    np.testing.assert_array_equal(result, expected.ravel())
+
+
+def test_points_to_points_matches_nearest_indices() -> None:
+    source, target = _random_points(500), _random_points(250, seed=1)
+    data = np.random.default_rng(2).random((5, 500))
+    source_lats, source_lons = source.latlon()
+    target_lats, target_lons = target.latlon()
+    (index,) = nearest_indices(
+        source_lats=source_lats,
+        source_lons=source_lons,
+        target_lats=target_lats,
+        target_lons=target_lons,
+    )
+    result = Regridder(source, target, "nearest_great_circle").apply(data)
+    # Points have no cells, so no target points are outside
+    np.testing.assert_array_equal(result, data[..., index])
+
+
+def test_curvilinear_points_regrid_to_grid(south: Grid) -> None:
+    # A 2D source with no rectilinear structure, as for a curvilinear grid
+    lats, lons = south.latlon()
+    source = Points(lats, lons)
+    target = build_global_latlon(5.0)
+    data = np.random.default_rng(0).random((2, *south.shape))
+    result = Regridder(source, target, "nearest_great_circle").apply(data)
+    assert result.shape == (2, *target.shape)
+    assert not np.isnan(result).any()
+    # The same nearest points as from the grid, inside it
+    from_grid = Regridder(south, target, "nearest_great_circle").apply(data)
+    inside = ~np.isnan(from_grid)
+    np.testing.assert_array_equal(result[inside], from_grid[inside])
+
+
+def test_points_to_grid_leaves_targets_without_latlon_nan() -> None:
+    points = np.arange(-15_000_000, 15_000_001, 300_000.0)
+    target = Grid(points, points[::-1], "EPSG:6931")
+    no_latlon = np.isnan(target.latlon()[0])
+    regridder = Regridder(_random_points(100), target, "nearest_great_circle")
+    np.testing.assert_array_equal(outside(regridder), no_latlon)
+
+
+@pytest.mark.parametrize("method", ["linear", "nearest", "area_weighted"])
+def test_grid_methods_reject_points_source(latlon: Grid, method: Method) -> None:
+    with pytest.raises(TypeError, match="needs a Grid source"):
+        Regridder(_random_points(10), latlon, method)
+
+
+def test_area_weighted_rejects_points_target(latlon: Grid) -> None:
+    with pytest.raises(TypeError, match="needs a Grid target"):
+        Regridder(latlon, _random_points(10), "area_weighted")
+
+
+def test_points_source_rejects_wrong_shape(latlon: Grid) -> None:
+    regridder = Regridder(_random_points(10), latlon, "nearest_great_circle")
+    with pytest.raises(ValueError, match="does not end with the source shape"):
+        regridder.apply(np.ones((10, 3)))
