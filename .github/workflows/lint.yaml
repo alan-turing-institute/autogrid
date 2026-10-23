@@ -1,0 +1,30 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
+          cache-suffix: lint
+          activate-environment: true
+
+      - name: Check formatting with ruff
+        run: uv run --group dev ruff format --check
+
+      - name: Lint with ruff
+        run: uv run --group dev ruff check
+
+      - name: Type-check with ty
+        run: uv run --group dev ty check

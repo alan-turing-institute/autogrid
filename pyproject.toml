@@ -1,15 +1,33 @@
 [project]
 name = "autogrid"
 version = "0.0.1"
-description = "Add your description here"
+description = "Grid generation and regridding for geospatial data."
 readme = "README.md"
-authors = []
+authors = [
+    { name = "James Robinson", email = "james.em.robinson@gmail.com" },
+]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "numpy>=1.26",
+    "pyproj>=3.6",
+    "scipy>=1.12",
+]
 
-[project.scripts]
-autogrid = "autogrid:main"
+[project.optional-dependencies]
+plot = [
+    "cartopy>=0.26.0",
+    "matplotlib>=3.10.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "autogrid[plot]",
+    "pytest>=8.0",
+    "ruff>=0.13.1",
+    "scitools-iris>=3.8.0",
+    "ty>=0.0.2",
+]
