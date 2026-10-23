@@ -36,7 +36,7 @@ def test_regrid_matches_analytic_field(
     assert result.shape == south.shape
     # Within half a cell of the pole, beyond the outermost source latitudes, the
     # source edge values are held rather than extrapolated
-    polar = np.abs(south.latlon()[0]) > latlon.y_points.max()
+    polar = np.abs(south.latlon()[0]) > np.max(latlon.y_points)
     np.testing.assert_allclose(result[~polar], analytic(south)[~polar], atol=atol)
     np.testing.assert_allclose(result[polar], analytic(south)[polar], atol=1e-2)
 
